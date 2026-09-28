@@ -1,5 +1,5 @@
 (() => {
-  'use strict';
+  'use strict';const T=window.RobotlandI18n.text;
   const $ = id => document.getElementById(id), bridge = window.RobotlandClassroom;
   const map = window.MAP_DATA, viewport = $('mapViewport'), canvas = $('mapCanvas');
   const palette = ['#176c9b', '#9b3e73', '#4e741f', '#9a501d', '#5c50a8', '#087b74'];
@@ -8,12 +8,12 @@
   const gestures = new Map();
   const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const age = p => Math.max(0, Math.floor((Date.now() - p.updatedAt) / 60000));
-  const ageLabel = p => age(p) === 0 ? '방금' : age(p) + '분 전';
-  const timeLabel = p => new Date(p.updatedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const ageLabel = p => age(p) === 0 ? T("방금") : age(p) + T("분 전");
+  const timeLabel = p => new Date(p.updatedAt).toLocaleTimeString(window.RobotlandI18n.locale, { hour: '2-digit', minute: '2-digit', hour12: false });
   const valid = p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.x <= map.width && p.y >= 0 && p.y <= map.height && Number.isFinite(p.updatedAt) && age(p) < 1440;
   function nearest(p) {
     const place = map.attractions.reduce((best, next) => Math.hypot(next.marker[0] - p.x, next.marker[1] - p.y) < Math.hypot(best.marker[0] - p.x, best.marker[1] - p.y) ? next : best);
-    return place.name + ' 근처';
+    return place.name + T(" 근처");
   }
   function color(id) { return palette[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % palette.length]; }
   function feedback(text) { $('pingFeedback').textContent = text; }
@@ -23,29 +23,29 @@
   }
   function render() {
     $('placeGroupPing').disabled = !canPlace();
-    $('placeGroupPing').textContent = choosing ? '위치 선택 중' : '우리 조 위치 찍기';
+    $('placeGroupPing').textContent = choosing ? T("위치 선택 중") : T("우리 조 위치 찍기");
     $('placeGroupPing').setAttribute('aria-pressed', String(choosing));
     $('toggleGroupPings').disabled = !user;
     $('toggleGroupPings').setAttribute('aria-pressed', String(visible));
-    $('locationHint').textContent = !user ? '반 입장 후 조에 가입하면 위치를 공유할 수 있어요.' :
-      !navigator.onLine ? '오프라인 · 마지막으로 받은 위치입니다.' :
-      !supported ? '조 위치 공유를 준비하고 있어요.' :
-      !mine ? '같은 반의 조 위치를 볼 수 있어요. 조에 가입하면 내 위치를 찍을 수 있습니다.' :
-      mine.name + ' · 지도에서 직접 표시 · 20초마다 갱신';
+    $('locationHint').textContent = !user ? T("반 입장 후 조에 가입하면 위치를 공유할 수 있어요.") :
+      !navigator.onLine ? T("오프라인 · 마지막으로 받은 위치입니다.") :
+      !supported ? T("조 위치 공유를 준비하고 있어요.") :
+      !mine ? T("같은 반의 조 위치를 볼 수 있어요. 조에 가입하면 내 위치를 찍을 수 있습니다.") :
+      mine.name + T(" · 지도에서 직접 표시 · 20초마다 갱신");
     const pins = groups.filter(g => valid(g.location));
     $('groupLocationPins').hidden = !visible || !user;
-    $('groupLocationPins').innerHTML = pins.map(g => `<button type="button" class="group-location-pin ${g.id === mine?.id ? 'my-location' : ''} ${age(g.location) >= 10 ? 'old-location' : ''}" data-group-location="${esc(g.id)}" style="left:${g.location.x / map.width * 100}%;top:${g.location.y / map.height * 100}%;--pin-color:${color(g.id)}" aria-label="${esc(g.name)} 위치, ${esc(nearest(g.location))}, ${ageLabel(g.location)}" draggable="false"><span class="location-dot">조</span><span class="location-label">${esc(g.name)}<small>${timeLabel(g.location)} · ${ageLabel(g.location)}${age(g.location) >= 10 ? ' · 오래됨' : ''}</small></span></button>`).join('');
+    $('groupLocationPins').innerHTML = pins.map(g => T("<button type=\"button\" class=\"group-location-pin ⟦0⟧ ⟦1⟧\" data-group-location=\"⟦2⟧\" style=\"left:⟦3⟧%;top:⟦4⟧%;--pin-color:⟦5⟧\" aria-label=\"⟦6⟧ 위치, ⟦7⟧, ⟦8⟧\" draggable=\"false\"><span class=\"location-dot\">조</span><span class=\"location-label\">⟦9⟧<small>⟦10⟧ · ⟦11⟧⟦12⟧</small></span></button>",[g.id === mine?.id ? 'my-location' : '',age(g.location) >= 10 ? 'old-location' : '',esc(g.id),g.location.x / map.width * 100,g.location.y / map.height * 100,color(g.id),esc(g.name),esc(nearest(g.location)),ageLabel(g.location),esc(g.name),timeLabel(g.location),ageLabel(g.location),age(g.location) >= 10 ? T(" · 오래됨") : ''])).join('');
     $('pingConfirm').hidden = !choosing;
     $('confirmGroupPing').disabled = !draft || !canPlace();
-    $('confirmGroupPing').textContent = saving ? '공유 중…' : '여기에 표시';
+    $('confirmGroupPing').textContent = saving ? T("공유 중…") : T("여기에 표시");
     $('cancelGroupPing').disabled = saving;
-    $('pingCandidateLabel').textContent = draft ? mine.name + ' · ' + nearest(draft) + '에 표시할까요?' : '지도에서 지금 있는 곳을 짧게 눌러주세요. 확대·이동도 가능합니다.';
+    $('pingCandidateLabel').textContent = draft ? mine.name + ' · ' + nearest(draft) + T("에 표시할까요?") : T("지도에서 지금 있는 곳을 짧게 눌러주세요. 확대·이동도 가능합니다.");
     $('locationDraft').hidden = !choosing || !draft;
     if (draft) { $('locationDraft').style.left = draft.x / map.width * 100 + '%'; $('locationDraft').style.top = draft.y / map.height * 100 + '%'; }
     const group = groups.find(g => g.id === selected && valid(g.location));
     $('pingDetails').hidden = choosing || !group;
     if (group) {
-      $('pingDetailText').textContent = `${group.name} · ${nearest(group.location)}\n${timeLabel(group.location)} (${ageLabel(group.location)}) · ${group.location.updatedBy} 표시${age(group.location) >= 10 ? '\n10분 이상 지난 위치예요. 지금 위치와 다를 수 있습니다.' : ''}`;
+      $('pingDetailText').textContent = T("⟦0⟧ · ⟦1⟧\n⟦2⟧ (⟦3⟧) · ⟦4⟧ 표시⟦5⟧",[group.name,nearest(group.location),timeLabel(group.location),ageLabel(group.location),group.location.updatedBy,age(group.location) >= 10 ? T("\n10분 이상 지난 위치예요. 지금 위치와 다를 수 있습니다.") : '']);
       $('clearGroupPing').hidden = !(mine?.id === group.id || user?.role === 'teacher');
       $('clearGroupPing').disabled = saving || !navigator.onLine;
     }
@@ -89,9 +89,9 @@
       const result = await bridge.api('group-location', { groupId, ...point });
       if (requestEpoch !== epoch) return;
       window.RobotlandGroups.apply(result); stopChoosing(); selected = groupId;
-      feedback('우리 조 위치를 같은 반에 공유했어요.');
+      feedback(T("우리 조 위치를 같은 반에 공유했어요."));
     } catch (error) {
-      feedback(error.status === 404 ? '위치 저장소 업데이트가 필요해요. 선생님께 알려주세요.' : '표시하지 못했어요. ' + error.message);
+      feedback(error.status === 404 ? T("위치 저장소 업데이트가 필요해요. 선생님께 알려주세요.") : T("표시하지 못했어요. ") + error.message);
       if (error.status === 403) window.RobotlandGroups.refresh();
     } finally { saving = false; render(); }
   });
@@ -111,7 +111,7 @@
     try {
       const result = await bridge.api('group-location/clear', { groupId });
       if (requestEpoch !== epoch) return;
-      window.RobotlandGroups.apply(result); selected = null; feedback('위치 표시를 지웠어요.');
+      window.RobotlandGroups.apply(result); selected = null; feedback(T("위치 표시를 지웠어요."));
     } catch (error) { feedback(error.message); }
     finally { saving = false; render(); }
   });

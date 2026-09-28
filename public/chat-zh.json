@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "language": "zh",
+  "ui": {
+    "trigger": "选择表达 · Language",
+    "title": "选择表达",
+    "intro": "选择校外学习活动中需要表达的内容。",
+    "language": "语言 / Language",
+    "template": "想说什么？",
+    "preview": "消息预览",
+    "insert": "放入聊天输入框",
+    "append": "追加到已写的内容",
+    "close": "关闭",
+    "hint": "确认内容后放入聊天输入框，再点击发送按钮。",
+    "loadError": "无法加载语言包，请重新选择语言。",
+    "tooLong": "加上已有内容后超过1,000个字符，请先缩短输入框里的内容。",
+    "busy": "正在发送消息，请稍后再试。",
+    "minuteFormat": "{minutes}分钟"
+  },
+  "groups": {
+    "location": "位置与移动",
+    "activity": "游乐设施与排队",
+    "daily": "吃饭、厕所与休息",
+    "help": "求助与身体状况",
+    "meeting": "时间与集合",
+    "reply": "简短回复"
+  },
+  "fields": {
+    "speaker": "谁？",
+    "place": "哪里？",
+    "minutes": "几分钟？",
+    "time": "什么时候？",
+    "symptom": "哪里不舒服？"
+  },
+  "speakers": {
+    "me": "我",
+    "group": "我们组"
+  },
+  "placeGroups": {
+    "common": "常用地点",
+    "ride": "游乐设施",
+    "exhibit": "展馆与体验"
+  },
+  "places": {
+    "here": "现在的位置",
+    "gate": "出入口广场",
+    "lunch-hall": "午餐餐厅",
+    "exit-meeting": "机器人前的集合地点",
+    "restroom": "厕所",
+    "teacher": "老师所在的地方",
+    "sky-tower": "天空塔",
+    "steam-bumper": "蒸汽碰碰车",
+    "rocking-tug": "波浪之旅",
+    "zodiac": "星座之旅",
+    "big-swing": "旋转飞椅",
+    "power-surge": "旋转齿轮",
+    "thunderbolt": "高速列车",
+    "splash-cruise": "全新航行",
+    "tea-party": "旋转茶杯",
+    "captain-roko": "罗科船长海盗船",
+    "mini-drop": "儿童塔",
+    "robot-friends": "机器人朋友",
+    "rosia-go-round": "罗莎和朋友们",
+    "jumping-bot": "跳跃机器人",
+    "robot-flight": "飞行机器人",
+    "kids-bumper": "儿童碰碰车",
+    "ride-17": "儿童飞机",
+    "ride-18": "儿童摩天轮",
+    "ride-19": "车队",
+    "ride-20": "欢乐摇摆",
+    "ride-21": "丛林旋转木马",
+    "ride-22": "森林列车",
+    "exhibit-01": "机器人工厂",
+    "exhibit-02": "航空航天机器人馆",
+    "exhibit-03": "希望机器人大冒险",
+    "exhibit-04": "机器人创作馆",
+    "exhibit-05": "机器人巴士",
+    "exhibit-06": "机器人学校",
+    "exhibit-07": "恐龙世界",
+    "exhibit-08": "机器人剧场",
+    "exhibit-09": "机器人幻想世界",
+    "exhibit-10": "多功能厅",
+    "exhibit-11": "电动卡丁车场",
+    "exhibit-12": "Eduroid工作室"
+  },
+  "times": {
+    "now": {
+      "label": "现在",
+      "text": "现在"
+    },
+    "after5": {
+      "label": "5分钟后",
+      "text": "5分钟后"
+    },
+    "after10": {
+      "label": "10分钟后",
+      "text": "10分钟后"
+    },
+    "10:00": {
+      "label": "10:00",
+      "text": "10:00"
+    },
+    "11:00": {
+      "label": "11:00",
+      "text": "11:00"
+    },
+    "12:00": {
+      "label": "12:00",
+      "text": "12:00"
+    },
+    "12:40": {
+      "label": "12:40",
+      "text": "12:40"
+    },
+    "13:00": {
+      "label": "13:00",
+      "text": "13:00"
+    }
+  },
+  "symptoms": {
+    "stomach": "肚子痛",
+    "headache": "头痛",
+    "dizzy": "头晕",
+    "nausea": "恶心",
+    "injury": "受伤"
+  },
+  "phrases": {
+    "at": {
+      "label": "告诉别人在哪里",
+      "text": [
+        "我在{place}。",
+        "我们组在{place}。"
+      ]
+    },
+    "going": {
+      "label": "告诉别人正在去哪里",
+      "text": [
+        "我正在前往{place}。",
+        "我们组正在前往{place}。"
+      ]
+    },
+    "arrived": {
+      "label": "告诉别人已经到达",
+      "text": [
+        "我已经到达{place}。",
+        "我们组已经到达{place}。"
+      ]
+    },
+    "waiting": {
+      "label": "告诉别人正在等候",
+      "text": [
+        "我在{place}等候。",
+        "我们组在{place}等候。"
+      ]
+    },
+    "where": {
+      "label": "询问对方的位置",
+      "text": "你们现在在哪里？"
+    },
+    "queue": {
+      "label": "告诉别人正在排队",
+      "text": [
+        "我正在{place}排队。",
+        "我们组正在{place}排队。"
+      ]
+    },
+    "waitTime": {
+      "label": "告知预计排队时间",
+      "text": "{place}大约需要排队{minutes}分钟。"
+    },
+    "finished": {
+      "label": "告诉别人体验结束了",
+      "text": [
+        "我已经结束了{place}的体验。",
+        "我们组已经结束了{place}的体验。"
+      ]
+    },
+    "next": {
+      "label": "告知下一个目的地",
+      "text": [
+        "我接下来要去{place}。",
+        "我们组接下来要去{place}。"
+      ]
+    },
+    "eating": {
+      "label": "告诉别人正在吃午饭",
+      "text": [
+        "我正在吃午饭。",
+        "我们组正在吃午饭。"
+      ]
+    },
+    "mealDone": {
+      "label": "告诉别人午饭吃完了",
+      "text": [
+        "我已经吃完午饭了。",
+        "我们组已经吃完午饭了。"
+      ]
+    },
+    "restroom": {
+      "label": "告诉别人要去厕所",
+      "text": [
+        "我去一下厕所，马上回来。",
+        "我们组去一下厕所，马上回来。"
+      ]
+    },
+    "water": {
+      "label": "请求饮用水",
+      "text": "我需要喝点水。"
+    },
+    "rest": {
+      "label": "告诉别人正在休息",
+      "text": [
+        "我在{place}休息。",
+        "我们组在{place}休息。"
+      ]
+    },
+    "help": {
+      "label": "请求老师帮助",
+      "text": "老师，我需要帮助。请到{place}来。"
+    },
+    "lost": {
+      "label": "告诉老师迷路了",
+      "text": "我迷路了。老师，请帮帮我。"
+    },
+    "friendMissing": {
+      "label": "告诉老师找不到同伴",
+      "text": "我找不到同伴了。最后看到同伴的地方在{place}附近。老师，请帮忙。"
+    },
+    "unwell": {
+      "label": "告诉老师自己不舒服",
+      "text": "我身体不舒服（{symptom}）。请老师帮忙。"
+    },
+    "friendUnwell": {
+      "label": "告诉老师同伴不舒服",
+      "text": "我的同伴身体不舒服（{symptom}）。请老师帮忙。"
+    },
+    "waitPlease": {
+      "label": "请别人等一下",
+      "text": "请等{minutes}分钟。"
+    },
+    "meet": {
+      "label": "约定集合地点与时间",
+      "text": "我们{time}在{place}集合吧。"
+    },
+    "late": {
+      "label": "告诉别人会迟到",
+      "text": "我可能会比集合时间晚到大约{minutes}分钟。"
+    },
+    "headingBack": {
+      "label": "前往离园集合地点",
+      "text": [
+        "我正在前往机器人前的离园集合地点。",
+        "我们组正在前往机器人前的离园集合地点。"
+      ]
+    },
+    "understood": {
+      "label": "表示明白了",
+      "text": "好的，我明白了。"
+    },
+    "okay": {
+      "label": "表示没事",
+      "text": "我没事。"
+    },
+    "repeat": {
+      "label": "请对方再说一次",
+      "text": "请再说一遍。"
+    },
+    "thanks": {
+      "label": "表示感谢",
+      "text": "谢谢。"
+    },
+    "languageHelp": {
+      "label": "请对方用简单的话说明",
+      "text": "我不太听得懂韩语，请用简单的话说明。"
+    }
+  }
+}

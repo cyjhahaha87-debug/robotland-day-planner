@@ -1,4 +1,5 @@
 (() => {
+ const T=window.RobotlandI18n.text;
   const dialog=document.getElementById('installDialog'),button=document.getElementById('installApp');let promptEvent=null;
   function installed(){document.getElementById('installHelp').hidden=!!navigator.standalone||matchMedia('(display-mode: standalone)').matches;}
   installed();matchMedia('(display-mode: standalone)').addEventListener('change',installed);

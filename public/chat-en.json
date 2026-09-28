@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "language": "en",
+  "ui": {
+    "trigger": "Choose a message · Language",
+    "title": "Choose a message",
+    "intro": "Choose what you need to say during the field trip.",
+    "language": "Language / 언어",
+    "template": "What would you like to say?",
+    "preview": "Message preview",
+    "insert": "Add to chat",
+    "append": "Append to your draft",
+    "close": "Close",
+    "hint": "Review the message, insert it into the chat box, then tap the send button.",
+    "loadError": "Could not load this language. Please select it again.",
+    "tooLong": "Your draft and this message exceed 1,000 characters. Shorten your draft first.",
+    "busy": "A message is being sent. Please try again shortly.",
+    "minuteFormat": "{minutes} minutes"
+  },
+  "groups": {
+    "location": "Location & moving",
+    "activity": "Rides & queues",
+    "daily": "Food, toilets & rest",
+    "help": "Help & health",
+    "meeting": "Time & meeting up",
+    "reply": "Short replies"
+  },
+  "fields": {
+    "speaker": "Who?",
+    "place": "Where?",
+    "minutes": "How many minutes?",
+    "time": "When?",
+    "symptom": "What is wrong?"
+  },
+  "speakers": {
+    "me": "Me",
+    "group": "Our group"
+  },
+  "placeGroups": {
+    "common": "Common places",
+    "ride": "Rides",
+    "exhibit": "Exhibits & activities"
+  },
+  "places": {
+    "here": "the current location",
+    "gate": "the entrance plaza",
+    "lunch-hall": "the lunch restaurant",
+    "exit-meeting": "the meeting point in front of the robot",
+    "restroom": "the toilets",
+    "teacher": "the teacher’s location",
+    "sky-tower": "Sky Tower",
+    "steam-bumper": "Steam Bumper Cars",
+    "rocking-tug": "Wave Ride",
+    "zodiac": "Zodiac Ride",
+    "big-swing": "Swing Ride",
+    "power-surge": "Spinning Gears",
+    "thunderbolt": "Express Train",
+    "splash-cruise": "New Voyage",
+    "tea-party": "Tea Party",
+    "captain-roko": "Captain Roko’s Pirate Ship",
+    "mini-drop": "Kids’ Tower",
+    "robot-friends": "Robot Friends",
+    "rosia-go-round": "Rosha and Friends",
+    "jumping-bot": "Jumping Bot",
+    "robot-flight": "Flying Robot",
+    "kids-bumper": "Kids’ Bumper Cars",
+    "ride-17": "Kids’ Jets",
+    "ride-18": "Kids’ Ferris Wheel",
+    "ride-19": "Convoy",
+    "ride-20": "Happy Swing",
+    "ride-21": "Jungle Carousel",
+    "ride-22": "Forest Train",
+    "exhibit-01": "Robot Factory",
+    "exhibit-02": "Aerospace Robot Hall",
+    "exhibit-03": "Hope Robot Adventure",
+    "exhibit-04": "Robo Craft",
+    "exhibit-05": "Robota Bus",
+    "exhibit-06": "Robot School",
+    "exhibit-07": "Dinosaur World",
+    "exhibit-08": "Robot Theatre",
+    "exhibit-09": "Robot Fantasia",
+    "exhibit-10": "Multipurpose Hall",
+    "exhibit-11": "Electric Go-karts",
+    "exhibit-12": "Eduroid Studio"
+  },
+  "times": {
+    "now": {
+      "label": "Now",
+      "text": "now"
+    },
+    "after5": {
+      "label": "In 5 minutes",
+      "text": "in 5 minutes"
+    },
+    "after10": {
+      "label": "In 10 minutes",
+      "text": "in 10 minutes"
+    },
+    "10:00": {
+      "label": "10:00",
+      "text": "at 10:00"
+    },
+    "11:00": {
+      "label": "11:00",
+      "text": "at 11:00"
+    },
+    "12:00": {
+      "label": "12:00",
+      "text": "at 12:00"
+    },
+    "12:40": {
+      "label": "12:40",
+      "text": "at 12:40"
+    },
+    "13:00": {
+      "label": "13:00",
+      "text": "at 13:00"
+    }
+  },
+  "symptoms": {
+    "stomach": "stomach ache",
+    "headache": "headache",
+    "dizzy": "dizziness",
+    "nausea": "nausea",
+    "injury": "an injury"
+  },
+  "phrases": {
+    "at": {
+      "label": "Say where you are",
+      "text": [
+        "I'm at {place}.",
+        "We're at {place}."
+      ]
+    },
+    "going": {
+      "label": "Say where you are going",
+      "text": [
+        "I'm heading to {place}.",
+        "We're heading to {place}."
+      ]
+    },
+    "arrived": {
+      "label": "Say you have arrived",
+      "text": [
+        "I've arrived at {place}.",
+        "We've arrived at {place}."
+      ]
+    },
+    "waiting": {
+      "label": "Say you are waiting",
+      "text": [
+        "I'm waiting at {place}.",
+        "We're waiting at {place}."
+      ]
+    },
+    "where": {
+      "label": "Ask where someone is",
+      "text": "Where are you now?"
+    },
+    "queue": {
+      "label": "Say you are in a queue",
+      "text": [
+        "I'm in the queue for {place}.",
+        "We're in the queue for {place}."
+      ]
+    },
+    "waitTime": {
+      "label": "Share the waiting time",
+      "text": "The wait for {place} is about {minutes} minutes."
+    },
+    "finished": {
+      "label": "Say you have finished",
+      "text": [
+        "I have finished at {place}.",
+        "We have finished at {place}."
+      ]
+    },
+    "next": {
+      "label": "Say where you will go next",
+      "text": [
+        "I'll go to {place} next.",
+        "We'll go to {place} next."
+      ]
+    },
+    "eating": {
+      "label": "Say you are eating lunch",
+      "text": [
+        "I'm having lunch.",
+        "We're having lunch."
+      ]
+    },
+    "mealDone": {
+      "label": "Say you have finished lunch",
+      "text": [
+        "I've finished lunch.",
+        "We've finished lunch."
+      ]
+    },
+    "restroom": {
+      "label": "Say you are going to the toilet",
+      "text": [
+        "I'm going to the toilet. I'll be back shortly.",
+        "We're going to the toilets. We'll be back shortly."
+      ]
+    },
+    "water": {
+      "label": "Ask for drinking water",
+      "text": "I need some drinking water."
+    },
+    "rest": {
+      "label": "Say you are resting",
+      "text": [
+        "I'm taking a break at {place}.",
+        "We're taking a break at {place}."
+      ]
+    },
+    "help": {
+      "label": "Ask a teacher for help",
+      "text": "Teacher, I need help. Please come to {place}."
+    },
+    "lost": {
+      "label": "Say you are lost",
+      "text": "I'm lost. Teacher, please help me."
+    },
+    "friendMissing": {
+      "label": "Say you cannot find a friend",
+      "text": "I can't find my friend. I last saw them near {place}. Teacher, please help."
+    },
+    "unwell": {
+      "label": "Say you are unwell",
+      "text": "I'm not feeling well ({symptom}). Teacher, please help."
+    },
+    "friendUnwell": {
+      "label": "Say a friend is unwell",
+      "text": "My friend is not feeling well ({symptom}). Teacher, please help."
+    },
+    "waitPlease": {
+      "label": "Ask someone to wait",
+      "text": "Please wait {minutes} minutes."
+    },
+    "meet": {
+      "label": "Suggest a time and place to meet",
+      "text": "Let's meet at {place} {time}."
+    },
+    "late": {
+      "label": "Say you will be late",
+      "text": "I'll be about {minutes} minutes late for the meeting."
+    },
+    "headingBack": {
+      "label": "Say you are returning to the meeting point",
+      "text": [
+        "I'm heading to the departure meeting point in front of the robot.",
+        "We're heading to the departure meeting point in front of the robot."
+      ]
+    },
+    "understood": {
+      "label": "Say you understand",
+      "text": "Okay, I understand."
+    },
+    "okay": {
+      "label": "Say you are okay",
+      "text": "I'm okay."
+    },
+    "repeat": {
+      "label": "Ask someone to repeat",
+      "text": "Please say that again."
+    },
+    "thanks": {
+      "label": "Say thank you",
+      "text": "Thank you."
+    },
+    "languageHelp": {
+      "label": "Ask for simpler language",
+      "text": "I don't understand Korean very well. Please use simple words."
+    }
+  }
+}

@@ -7,7 +7,8 @@
     "build": "node scripts/build-netlify.mjs",
     "dev": "node scripts/dev.mjs",
     "build:netlify": "node scripts/build-netlify.mjs",
-    "test": "node --test tests/backend.cjs tests/schedule.cjs tests/notices.cjs tests/staff.cjs tests/invites.cjs tests/push.cjs tests/push-sw.cjs tests/recovery.cjs tests/teacher-reentry.cjs"
+    "test": "node --test tests/backend.cjs tests/schedule.cjs tests/notices.cjs tests/staff.cjs tests/invites.cjs tests/push.cjs tests/push-sw.cjs tests/recovery.cjs tests/teacher-reentry.cjs tests/word-chat.cjs tests/app-language.cjs",
+    "test:languages": "node tests/app-language.browser.mjs"
   },
   "dependencies": {
     "web-push": "3.6.7"
