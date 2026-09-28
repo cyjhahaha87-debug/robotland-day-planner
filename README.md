@@ -2,6 +2,16 @@
 
 공식 안내도에서 시설을 선택하고 도보 이동·대기·이용시간을 더해 현장 동선을 계획하는 모바일 웹앱입니다. 가로 화면은 지도와 동선을 나란히 표시하며, 지도·개인 계획은 기기에 저장됩니다.
 
+## 집에서 이어서 작업하기
+
+**[처음 볼 문서: 집에서 이어서 작업하기](docs/집에서-이어하기.md)** — 소스 받기, 실행, 파일 위치, 수정 후 배포 방법을 정리했습니다.
+
+- [사용 중인 앱](https://robotland-trip.netlify.app/)
+- 2026-09-28: Apps Script **2026-09-28.5** 연결 확인, **사용자 아이폰 시험 푸시 수신 확인**
+- 푸시는 선생님 **공지**만 발송합니다. 시험 알림은 요청한 기기만 받습니다.
+- [최신 Apps Script 전체 코드](integration/RobotlandSheets.gs) · [공지 알림·재입장 사용법](docs/공지푸시-업데이트-안내.md)
+- 빠른 실행: `npm ci` → `npm run dev`, 검증: `npm test`, 빌드: `npm run build`
+
 ## 기능
 
 - 상단 QR 공유, 앱 주소 복사, 휴대폰 공유 메뉴, 오프라인 접속 QR 표시
@@ -26,7 +36,7 @@
 
 위쪽 QR 공유에서 앱 주소 또는 우리 조 초대를 선택합니다. 조 초대 QR을 받은 학생은 자기 이름만 입력하면 해당 반과 조에 함께 입장합니다. 초대는 최대 24시간 유효하며, 학생 권한으로만 입장합니다. QR은 외부 서비스로 전송하지 않고 기기에서 생성합니다.
 
-기존 저장소는 [최신 업데이트 안내](docs/공지푸시-업데이트-안내.md)에 따라 Apps Script를 2026-09-28.5로 배포하세요. 위치 확인창과 여기에 표시 버튼에는 맥동 강조를 적용했습니다.
+현재 저장소는 Apps Script **2026-09-28.5 배포를 완료**했습니다. 이후 저장소 코드를 수정할 때는 [업데이트 안내](docs/공지푸시-업데이트-안내.md)를 따르세요. 위치 확인창과 여기에 표시 버튼에는 맥동 강조를 적용했습니다.
 
 ## Netlify 배포
 
@@ -42,6 +52,8 @@ Netlify에서 이 저장소의 `main` 브랜치를 연결합니다. `netlify.tom
 
 Google Apps Script가 구글시트를 읽고 씁니다. 브라우저는 같은 사이트의 `/api/`에만 요청하며, 서버 함수가 비밀키를 붙여 Apps Script와 통신합니다.
 
+처음 연결하는 새 프로젝트의 절차입니다. 현재 운영 중인 사이트는 연결이 끝났습니다.
+
 1. [Apps Script 코드](integration/RobotlandSheets.gs)를 사용할 구글시트에 붙여 넣습니다.
 2. `setupRobotland`를 실행하고 웹앱으로 배포합니다.
 3. Netlify 환경변수에 `SHEETS_API_URL`, `SHEETS_BRIDGE_SECRET`을 설정하고 다시 배포합니다.
@@ -56,7 +68,7 @@ Google Apps Script가 구글시트를 읽고 씁니다. 브라우저는 같은 �
 
 ## 실행과 제한
 
-검증: `node tests/backend.cjs`, `node tests/schedule.cjs`, `node tests/notices.cjs`, `node tests/staff.cjs`, `node tests/invites.cjs`, `node tests/push.cjs`, `node tests/push-sw.cjs`, `node tests/recovery.cjs`, `node tests/teacher-reentry.cjs`.
+검증: `npm test` — 반 분리, 조·위치, 공지 삭제, 교사 모임, QR 초대, 학생 복구, 교사 재로그인, 푸시 발송·수신 처리의 모의 테스트를 실행합니다. 실제 시트나 학생 데이터는 변경하지 않습니다.
 
 Node.js 22 이상에서 `npm run dev`로 로컬 앱을 실행합니다. 기본 주소는 `http://127.0.0.1:4317`입니다. 처음에는 `npm ci`로 서버의 웹 푸시 라이브러리를 설치합니다.
 

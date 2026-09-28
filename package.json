@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node scripts/build-netlify.mjs",
     "dev": "node scripts/dev.mjs",
-    "build:netlify": "node scripts/build-netlify.mjs"
+    "build:netlify": "node scripts/build-netlify.mjs",
+    "test": "node --test tests/backend.cjs tests/schedule.cjs tests/notices.cjs tests/staff.cjs tests/invites.cjs tests/push.cjs tests/push-sw.cjs tests/recovery.cjs tests/teacher-reentry.cjs"
   },
   "dependencies": {
     "web-push": "3.6.7"
