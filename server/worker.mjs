@@ -20,11 +20,13 @@ export async function handleRequest(request,env){
  if(url.pathname==='/api/config'&&request.method==='GET')return json({ok:true,connected:!!(env.SHEETS_API_URL&&env.SHEETS_BRIDGE_SECRET),storage:'google-sheets',pushReady:false});
  const routes={
   '/api/login':['POST','login'], '/api/session':['GET','session'], '/api/logout':['POST','logout'],
-  '/api/messages':['GET','messages'], '/api/messages/send':['POST','send'],
+  '/api/messages/delete':['POST','deleteNotice'], '/api/messages':['GET','messages'], '/api/messages/send':['POST','send'],
   '/api/plan':['GET','loadPlan'], '/api/plan/save':['POST','savePlan'],
   '/api/classes/create':['POST','createClass'], '/api/class':['GET','classInfo'],
+  '/api/members/remove':['POST','removeClassMember'],
   '/api/groups':['GET','groups'], '/api/groups/create':['POST','createGroup'], '/api/groups/join':['POST','joinGroup'], '/api/groups/leave':['POST','leaveGroup'],
   '/api/groups/assign':['POST','assignMember'], '/api/groups/disband':['POST','disbandGroup'],
+  '/api/group-location':['POST','setGroupLocation'], '/api/group-location/clear':['POST','clearGroupLocation'],
   '/api/group-plan':['GET','groupPlan'], '/api/group-plan/save':['POST','saveGroupPlan'],
  };
  const route=routes[url.pathname];if(!route)return json({ok:false,error:'요청을 찾을 수 없어요.'},404);
@@ -61,6 +63,7 @@ export async function handleRequest(request,env){
    if(!/^[a-zA-Z0-9-]{20,64}$/.test(input.messageId||''))return json({ok:false,error:'메시지 식별자를 확인할 수 없어요.'},400);
    Object.assign(args,{text,kind,messageId:input.messageId});
   }
+  if(action==='deleteNotice'){args.messageId=String(input.messageId||'');if(!/^[a-zA-Z0-9-]{20,64}$/.test(args.messageId))return json({ok:false,error:'삭제할 공지를 선택하세요.'},400);}
   if(action==='messages')args.after=Math.max(0,Number(url.searchParams.get('after'))||0);
   if(action==='savePlan'||action==='saveGroupPlan'){
    if(!input.plan||typeof input.plan!=='object'||Array.isArray(input.plan)||JSON.stringify(input.plan).length>35000)return json({ok:false,error:'저장할 계획을 확인해 주세요.'},400);
@@ -69,6 +72,8 @@ export async function handleRequest(request,env){
   if(action==='createGroup'){args.name=String(input.name||'').trim();if(!args.name||args.name.length>20)return json({ok:false,error:'조 이름은 1~20자로 입력해 주세요.'},400);}
   if(action==='joinGroup'){args.groupId=String(input.groupId||'');if(!/^[a-zA-Z0-9-]{10,64}$/.test(args.groupId))return json({ok:false,error:'조를 목록에서 선택해 주세요.'},400);}
   if(['assignMember','disbandGroup'].includes(action)){args.groupId=input.groupId===null?null:String(input.groupId||'');args.deviceId=String(input.deviceId||'');}
+  if(action==='setGroupLocation'||action==='clearGroupLocation'){args.groupId=String(input.groupId||'');if(!/^[a-zA-Z0-9-]{10,64}$/.test(args.groupId))return json({ok:false,error:'현재 조를 확인해 주세요.'},400);if(action==='setGroupLocation'){if(!Number.isInteger(input.x)||!Number.isInteger(input.y)||input.x<0||input.x>2304||input.y<0||input.y>1123)return json({ok:false,error:'안내도 안에서 위치를 선택하세요.'},400);args.x=input.x;args.y=input.y;}}
+  if(action==='removeClassMember'){args.deviceId=String(input.deviceId||'');if(!/^[a-zA-Z0-9-]{20,64}$/.test(args.deviceId))return json({ok:false,error:'정리할 입장 기록을 선택하세요.'},400);}
   if(action==='groupPlan')args.groupId=url.searchParams.get('groupId')||'';
   if(action==='saveGroupPlan'){args.groupId=String(input.groupId||'');if(!/^[a-zA-Z0-9-]{10,64}$/.test(args.groupId))return json({ok:false,error:'편집할 조를 다시 선택하세요.'},400);args.baseRevision=input.baseRevision;if(!Number.isInteger(args.baseRevision)||args.baseRevision<0)return json({ok:false,error:'조 동선을 먼저 불러와 주세요.'},400);}
   const result=await bridge(env,action,args,request);

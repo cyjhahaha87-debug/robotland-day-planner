@@ -53,27 +53,42 @@
       ratio=totalMeters/totalUnits;
     }
     const fallback=options.baseMinutes/shortest(graph,'gate','central').units;
-    let last='gate',elapsed=0,walk=0,stay=0,waiting=0;const legs=[],destinations=stops.map(s=>({...s}));
-    if(options.returnGate&&stops.length)destinations.push({id:'gate',stay:0});
-    for(const stop of destinations){
-      const path=shortest(graph,last,stop.id);
-      const known=references.find(r=>(r.from===last&&r.to===stop.id)||(r.to===last&&r.from===stop.id));
+    let last='gate',elapsed=0,walk=0,stay=0,waiting=0;const legs=[],destinations=[];
+    const clock=t=>Number(t.slice(0,2))*60+Number(t.slice(3,5));
+    function segment(from,to){
+      const path=shortest(graph,from,to);
+      const known=references.find(r=>(r.from===from&&r.to===to)||(r.to===from&&r.from===to));
       const meters=known?known.meters:ratio?path.units*ratio:null;
       const rawMinutes=meters!==null?meters/(4000/60):path.units*fallback;
       const minutes=path.units===0?0:Math.max(1,Math.ceil(rawMinutes*options.pace-1e-9));
-      elapsed+=minutes;walk+=minutes;
-      let wait=0,late=0;
-      const meetingTime=stop.id==='lunch-hall'?options.lunchTime:stop.id==='exit-meeting'?(options.exitTime||'13:00'):null;
-      if(meetingTime&&options.start){
-        const toMinutes=t=>Number(t.slice(0,2))*60+Number(t.slice(3,5));
-        const target=toMinutes(meetingTime)-toMinutes(options.start);
-        wait=Math.max(0,target-elapsed);late=Math.max(0,elapsed-target);
-      }
-      legs.push({...path,from:last,to:stop.id,minutes,meters:meters===null?null:Math.round(meters),measured:!!known,arrival:elapsed,wait,late,stay:stop.stay||0});
-      elapsed+=wait;waiting+=wait;
-      elapsed+=stop.stay||0;stay+=stop.stay||0;last=stop.id;
+      return {...path,from,to,minutes,meters:meters===null?null:Math.round(meters),measured:!!known};
     }
-    return {legs,walk,stay,total:elapsed,waiting,measured:references.length>0,referenceCount:references.length};
+    function append(stop){
+      const leg=segment(last,stop.id);elapsed+=leg.minutes;walk+=leg.minutes;
+      const meetingTime=stop.id==='lunch-hall'?options.lunchTime:stop.id==='exit-meeting'?(options.exitTime||'13:00'):null;
+      const target=meetingTime&&options.start?clock(meetingTime)-clock(options.start):null;
+      const wait=target===null?0:Math.max(0,target-elapsed),late=target===null?0:Math.max(0,elapsed-target);
+      const duration=stop.stay||0;
+      legs.push({...leg,arrival:elapsed,wait,late,stay:duration});destinations.push({...stop});
+      elapsed+=wait+duration;waiting+=wait;stay+=duration;last=stop.id;
+    }
+    if(options.autoLunch){
+      const lunch={id:'lunch-hall',stay:options.mealMinutes??40};
+      const deadline=clock(options.lunchTime||'12:00')-clock(options.start);
+      let hadLunch=false;
+      // Preserve the chosen facility order, reserving the walk to lunch before accepting each stop.
+      for(const stop of stops.filter(s=>s.id!=='lunch-hall'&&s.id!=='exit-meeting')){
+        if(!hadLunch&&elapsed+segment(last,stop.id).minutes+(stop.stay||0)+segment(stop.id,lunch.id).minutes>deadline){append(lunch);hadLunch=true;}
+        append(stop);
+      }
+      if(!hadLunch)append(lunch);
+      append({id:'exit-meeting',stay:0});
+    }else{
+      for(const stop of stops)append(stop);
+      if(options.returnGate&&stops.length)append({id:'gate',stay:0});
+    }
+    return {legs,stops:destinations,walk,stay,total:elapsed,waiting,measured:references.length>0,referenceCount:references.length};
   }
+
   const api={createGraph,shortest,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PlannerCore=api;
 })(typeof window==='undefined'?globalThis:window);

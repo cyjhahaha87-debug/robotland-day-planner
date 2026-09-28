@@ -11,7 +11,8 @@ var TABLES = {
  ClassCreations:['requestId','deviceId','classId','createdAt'],
  Groups:['groupId','classId','nameJson','joinCode','createdAt','createdByDevice'],
  GroupMembers:['classId','deviceId','groupId','nicknameJson','joinedAt'],
- GroupPlans:['groupId','revision','planJson','updatedAt','updatedByJson']
+ GroupPlans:['groupId','revision','planJson','updatedAt','updatedByJson'],
+ GroupLocations:['classId','groupId','x','y','updatedAt','updatedByJson','deviceId']
 };
 function onOpen(){SpreadsheetApp.getUi().createMenu('로봇랜드').addItem('처음 설정','setupRobotland').addItem('반 만들고 참여코드 발급','createClassroom').addItem('교사용 개설코드 확인','showTeacherCode').addItem('연결 비밀키 확인','showConnectionSecret').addToUi();}
 function book(){return SpreadsheetApp.openById(ROBOTLAND_SHEET_ID);}
@@ -33,11 +34,12 @@ function createClassroom(){
  }finally{lock.releaseLock();}
 }
 function rows(sheet){return sheet.getLastRow()<2?[]:sheet.getRange(2,1,sheet.getLastRow()-1,sheet.getLastColumn()).getValues();}
+function normalizedMemberName(value){var text=String(value||'');if(text.normalize)text=text.normalize('NFKC');return text.replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/g,' ').trim().toLowerCase();}
 function digest(s){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8).map(function(n){return('0'+((n+256)%256).toString(16)).slice(-2);}).join('');}
 function output(result){return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);}
 function fail(message,status){return{ok:false,error:message,status:status||400};}
 function parseCell(v){try{return JSON.parse(v);}catch(e){return String(v||'');}}
-function doGet(){return output({ok:true,service:'Robotland Sheets API'});}
+function doGet(){return output({ok:true,service:'Robotland Sheets API',version:'2026-09-28.2',features:['group-locations','unique-member-names','remove-members','delete-notices']});}
 function doPost(e){
  var req;try{if(!e.postData||e.postData.contents.length>50000)return output(fail('요청 크기를 확인해 주세요.',413));req=JSON.parse(e.postData.contents);}catch(err){return output(fail('잘못된 요청이에요.'));}
  var secret=PropertiesService.getScriptProperties().getProperty('BRIDGE_SECRET');if(!secret||req.secret!==secret)return output(fail('연결 권한이 없어요.',403));
@@ -54,13 +56,21 @@ function handle(req){
   var code=String(req.code||'').toUpperCase(),codeRows=rows(ss.getSheetByName('AccessCodes')),match=codeRows.find(function(r){return r[0]===code&&r[4]===true&&Number(r[3])>now;});
   if(!match){record[2]=Number(record[2])+1;if(record[2]>=10)record[3]=now+900000;if(aidx<0)attempts.appendRow(record);else attempts.getRange(aidx+2,1,1,4).setValues([record]);return fail('코드가 틀렸거나 사용 기간이 지났어요.',401);}if(aidx>=0)attempts.getRange(aidx+2,1,1,4).setValues([[req.clientKey,now,0,0]]);
   if(!/^[a-f0-9]{64}$/.test(req.newToken||'')||!req.deviceId||!req.nickname)return fail('접속 정보를 확인해 주세요.');
-  var existing=rows(sessions),hash=digest(req.newToken),session=[hash,match[1],match[2],JSON.stringify(String(req.nickname).slice(0,20)),req.deviceId,Math.min(now+7*86400000,Number(match[3]))];
+  var existing=rows(sessions),memberSheet=ss.getSheetByName('GroupMembers'),memberList=memberSheet?rows(memberSheet):[],nameKey=normalizedMemberName(req.nickname);
+  if(!nameKey)return fail('이름을 입력해 주세요.');
+  var duplicate=existing.some(function(r){return r[1]===match[1]&&r[4]!==req.deviceId&&Number(r[5])>now&&normalizedMemberName(parseCell(r[3]))===nameKey;})||memberList.some(function(r){return r[0]===match[1]&&r[1]!==req.deviceId&&normalizedMemberName(parseCell(r[3]))===nameKey;});
+  if(duplicate&&match[2]!=='teacher')return fail('같은 반에서 이미 사용 중인 이름이에요. 번호를 붙이거나 선생님께 입장 기록 정리를 요청하세요.',409);
+  memberList.forEach(function(r,index){if(r[0]===match[1]&&r[1]===req.deviceId)memberSheet.getRange(index+2,4,1,1).setValues([[JSON.stringify(String(req.nickname).trim().slice(0,20))]]);});
+  var hash=digest(req.newToken),session=[hash,match[1],match[2],JSON.stringify(String(req.nickname).slice(0,20)),req.deviceId,Math.min(now+7*86400000,Number(match[3]))];
   var same=existing.findIndex(function(r){return r[1]===match[1]&&r[4]===req.deviceId;});if(same>=0)sessions.getRange(same+2,1,1,6).setValues([session]);else sessions.appendRow(session);
   return{ok:true,user:identity(ss,session)};
  }
  var allSessions=rows(sessions),idx=allSessions.findIndex(function(r){return r[0]===digest(String(req.token||''))&&Number(r[5])>now;});
  if(idx<0)return{ok:false,status:401,error:'반 코드를 다시 입력해 주세요.',code:'LOGIN_REQUIRED'};var session=allSessions[idx];
  if(req.action==='logout'){sessions.deleteRow(idx+2);return{ok:true};}
+ if(req.action==='deleteNotice')return deleteNotice(ss,req,session);
+ if(req.action==='removeClassMember')return removeClassMember(ss,req,session);
+ if(req.action==='setGroupLocation'||req.action==='clearGroupLocation')return groupLocationAction(ss,req,session,now);
  var who=identity(ss,session);
  if(req.action==='classInfo')return{ok:true,user:who,codes:session[2]==='teacher'?classCodes(ss,session[1]):null};
  if(['groups','createGroup','joinGroup','leaveGroup','groupPlan','saveGroupPlan','assignMember','disbandGroup'].indexOf(req.action)>=0)return groupAction(ss,req,session,now);
@@ -69,7 +79,7 @@ function handle(req){
   var list=rows(ss.getSheetByName('Messages')).filter(function(r){return r[2]===session[1];});
   var latestNotice=list.filter(function(r){return r[6]==='notice';}).slice(-1)[0];
   var after=Number(req.after)||0,filtered=list.filter(function(r){return Number(r[1])>after;}).slice(-100);
-  return{ok:true,messages:filtered.map(message),cursor:list.length?Number(list[list.length-1][1]):0,notice:latestNotice?message(latestNotice):null};
+  return{ok:true,noticeDeletionSupported:true,noticeIds:list.filter(function(r){return r[6]==='notice';}).map(function(r){return r[0];}),messages:filtered.map(message),cursor:list.length?Number(list[list.length-1][1]):0,notice:latestNotice?message(latestNotice):null};
  }
  if(req.action==='send'){
   if(['message','report','notice'].indexOf(req.kind)<0||!String(req.text||'').trim()||String(req.text).length>1000)return fail('내용을 확인해 주세요.');
@@ -153,5 +163,40 @@ function groupState(ss,s){
  var all=rows(ss.getSheetByName('Groups')).filter(function(r){return r[1]===s[1];}),members=rows(ss.getSheetByName('GroupMembers')).filter(function(r){return r[0]===s[1];}),mine=members.find(function(r){return r[1]===s[4];});
  var list=all.map(function(g){var own=!!mine&&mine[2]===g[0],gm=members.filter(function(m){return m[2]===g[0];});return{id:g[0],name:parseCell(g[2]),count:gm.length,code:own||s[2]==='teacher'?g[3]:null,mine:own,members:own||s[2]==='teacher'?gm.map(function(m){return parseCell(m[3]);}):[]};});
  var people=[];if(s[2]==='teacher'){var seen={};rows(ss.getSheetByName('Sessions')).filter(function(m){return m[1]===s[1]&&Number(m[5])>Date.now();}).forEach(function(m){if(seen[m[4]])return;seen[m[4]]=true;var member=members.find(function(x){return x[1]===m[4];});people.push({deviceId:m[4],nickname:parseCell(m[3]),role:m[2],groupId:member?member[2]:null});});}
- return{ok:true,groups:list,myGroup:list.find(function(g){return g.mine;})||null,people:people};
+ if(s[2]==='teacher')members.forEach(function(m){if(!people.some(function(p){return p.deviceId===m[1];}))people.push({deviceId:m[1],nickname:parseCell(m[3]),role:'student',groupId:m[2],inactive:true});});
+ var locationSheet=ss.getSheetByName('GroupLocations'),locations=locationSheet?rows(locationSheet).filter(function(r){return r[0]===s[1];}):[];
+ list.forEach(function(g){var pin=locations.find(function(r){return r[1]===g.id;});g.location=pin&&g.count>0&&Date.now()-Number(pin[4])<86400000?{x:Number(pin[2]),y:Number(pin[3]),updatedAt:Number(pin[4]),updatedBy:parseCell(pin[5])}:null;});
+ return{ok:true,groups:list,myGroup:list.find(function(g){return g.mine;})||null,people:people,locationsSupported:true,memberManagementSupported:true};
+}
+
+function groupLocationAction(ss,req,s,now){
+ var groups=rows(ss.getSheetByName('Groups')),members=rows(ss.getSheetByName('GroupMembers'));
+ var target=groups.find(function(g){return g[0]===req.groupId&&g[1]===s[1];});
+ var mine=members.some(function(m){return m[0]===s[1]&&m[1]===s[4]&&m[2]===req.groupId;});
+ if(!target||(!mine&&!(req.action==='clearGroupLocation'&&s[2]==='teacher')))return fail('현재 가입한 조의 위치만 표시할 수 있어요.',403);
+ if(req.action==='setGroupLocation'&&(!Number.isInteger(req.x)||!Number.isInteger(req.y)||req.x<0||req.x>2304||req.y<0||req.y>1123))return fail('안내도 안에서 위치를 선택하세요.');
+ var sheet=ss.getSheetByName('GroupLocations');
+ if(!sheet){sheet=ss.insertSheet('GroupLocations');sheet.appendRow(TABLES.GroupLocations);sheet.setFrozenRows(1);}
+ var list=rows(sheet),index=list.findIndex(function(r){return r[0]===s[1]&&r[1]===target[0];});
+ if(req.action==='clearGroupLocation'){if(index>=0)sheet.deleteRow(index+2);}
+ else{var row=[s[1],target[0],req.x,req.y,now,s[3],s[4]];if(index>=0)sheet.getRange(index+2,1,1,7).setValues([row]);else sheet.appendRow(row);}
+ return groupState(ss,s);
+}
+
+function removeClassMember(ss,req,s){
+ if(s[2]!=='teacher')return fail('선생님만 입장 기록을 정리할 수 있어요.',403);
+ if(req.deviceId===s[4])return fail('본인 접속은 반에서 나가기로 종료하세요.');
+ var sessions=ss.getSheetByName('Sessions'),members=ss.getSheetByName('GroupMembers');
+ var slist=rows(sessions),mlist=rows(members),present=slist.some(function(r){return r[1]===s[1]&&r[4]===req.deviceId;})||mlist.some(function(r){return r[0]===s[1]&&r[1]===req.deviceId;});
+ if(!present)return fail('우리 반의 입장 기록만 정리할 수 있어요.',403);
+ for(var i=slist.length-1;i>=0;i--)if(slist[i][1]===s[1]&&slist[i][4]===req.deviceId)sessions.deleteRow(i+2);
+ for(var j=mlist.length-1;j>=0;j--)if(mlist[j][0]===s[1]&&mlist[j][1]===req.deviceId)members.deleteRow(j+2);
+ return groupState(ss,s);
+}
+
+function deleteNotice(ss,req,s){
+ if(s[2]!=='teacher')return fail('선생님만 공지를 삭제할 수 있어요.',403);
+ var sheet=ss.getSheetByName('Messages'),list=rows(sheet),index=list.findIndex(function(r){return r[0]===req.messageId&&r[2]===s[1]&&r[6]==='notice';});
+ if(index<0)return fail('우리 반의 공지를 찾을 수 없어요.',404);
+ sheet.deleteRow(index+2);return{ok:true,deletedId:req.messageId};
 }

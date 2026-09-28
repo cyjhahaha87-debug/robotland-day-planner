@@ -5,3 +5,7 @@
 .timing-source{font-size:11px;color:#688594;line-height:1.8;margin:8px 0 2px;width:100%}.timing-source a{text-underline-offset:3px}.timing-source.unverified{color:#978052}@media(max-width:820px){.timing-source{font-size:12px}}
 
 .map-viewport,.map-canvas,.map-canvas img,.map-pin,.pin-label{user-select:none;-webkit-user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}.map-pin .pin-label{top:calc(100% + 3px);bottom:auto;left:50%;transform:translateX(-50%);opacity:1;background:transparent;color:#fff;padding:0;max-width:96px;min-width:50px;white-space:normal;word-break:keep-all;text-align:center;font-size:11px;font-weight:900;line-height:1.25;letter-spacing:-.2px;-webkit-text-stroke:2.5px #17211d;paint-order:stroke fill;text-shadow:0 1px 1px #000}.map-pin:hover .pin-label,.map-pin:focus-visible .pin-label{background:transparent;opacity:1}@media(max-width:1050px){.map-pin .pin-label{font-size:10px;max-width:86px;-webkit-text-stroke:2.2px #17211d}}
+
+.member-assignment{flex-wrap:wrap}.member-assignment>span small{display:block;font-size:10px;color:#8a99a0;margin-top:4px}.member-assignment>button{min-height:36px;font-size:11px;border:1px solid #e4d3c9;background:#fff8f1;color:#995539;padding:6px 9px;border-radius:6px}
+
+.delete-notice{display:block;margin-top:6px;margin-left:auto;min-height:40px;padding:7px 12px;border:1px solid #e0ccbb;border-radius:7px;background:#fff9f1;color:#98512f;font-size:12px}
