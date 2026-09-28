@@ -1,10 +1,11 @@
+import { normalizePushSubscription, pushConfigured } from './push.mjs';
 const COOKIE='robotland_session';
 const json=(value,status=200,extra={})=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}});
 const encoder=new TextEncoder();
 async function fingerprint(value,secret){const key=await crypto.subtle.importKey('raw',encoder.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);return [...new Uint8Array(await crypto.subtle.sign('HMAC',key,encoder.encode(value)))].map(n=>n.toString(16).padStart(2,'0')).join('');}
 function getCookie(request){return(request.headers.get('cookie')||'').split(';').map(s=>s.trim()).find(s=>s.startsWith(COOKIE+'='))?.slice(COOKIE.length+1)||'';}
 function sessionCookie(token,url,clear=false){return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${clear?0:604800}${url.hostname==='127.0.0.1'||url.hostname==='localhost'?'':'; Secure'}`;}
-async function bridge(env,action,args,request){
+export async function bridge(env,action,args,request){
  if(!env.SHEETS_API_URL||!env.SHEETS_BRIDGE_SECRET)return{ok:false,error:'구글시트 API 연결을 준비하고 있어요. 동선은 이 기기에 저장됩니다.',status:503};
  const url=new URL(env.SHEETS_API_URL);
  if(url.protocol!=='https:'||url.hostname!=='script.google.com'||!/^\/macros\/s\/[^/]+\/exec$/.test(url.pathname))throw new Error('Invalid Sheets endpoint');
@@ -17,8 +18,10 @@ async function bridge(env,action,args,request){
 export async function handleRequest(request,env){
  const url=new URL(request.url);
  if(!url.pathname.startsWith('/api/'))return env.ASSETS.fetch(request);
- if(url.pathname==='/api/config'&&request.method==='GET')return json({ok:true,connected:!!(env.SHEETS_API_URL&&env.SHEETS_BRIDGE_SECRET),storage:'google-sheets',pushReady:false});
+ if(url.pathname==='/api/config'&&request.method==='GET')return json({ok:true,connected:!!(env.SHEETS_API_URL&&env.SHEETS_BRIDGE_SECRET),storage:'google-sheets',pushReady:pushConfigured(env),pushPublicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null});
  const routes={
+  '/api/recovery/register':['POST','registerRecovery'], '/api/recovery/resume':['POST','resumeRecovery'], '/api/recovery/create':['POST','createRecovery'], '/api/recovery/preview':['POST','previewRecovery'], '/api/recovery/consume':['POST','consumeRecovery'],
+  '/api/push/status':['GET','pushStatus'], '/api/push/subscribe':['POST','pushSubscribe'], '/api/push/unsubscribe':['POST','pushUnsubscribe'], '/api/push/test':['POST','pushTest'], '/api/push/retry':['POST','pushRetry'],
   '/api/invites/create':['POST','createGroupInvite'], '/api/invites/preview':['POST','previewGroupInvite'], '/api/invites/join':['POST','joinGroupInvite'],
   '/api/staff/enter':['POST','staffEnterClass'], '/api/staff/login':['POST','staffLogin'], '/api/staff':['GET','staff'], '/api/staff/send':['POST','staffSend'],
   '/api/login':['POST','login'], '/api/session':['GET','session'], '/api/logout':['POST','logout'],
@@ -42,6 +45,12 @@ export async function handleRequest(request,env){
    if(!input||typeof input!=='object'||Array.isArray(input))return json({ok:false,error:'잘못된 요청이에요.'},400);
   }
   const action=route[1],args={};
+  if(['resumeRecovery','previewRecovery','consumeRecovery'].includes(action)){
+   if(!/^[a-f0-9]{64}$/.test(input.recoveryToken||''))return json({ok:false,error:'올바른 재입장 QR을 열어주세요.'},400);
+   args.recoveryToken=input.recoveryToken;if(action==='resumeRecovery'){args.deviceId=String(input.deviceId||'');if(!/^[a-zA-Z0-9-]{20,64}$/.test(args.deviceId))return json({ok:false,error:'기기 정보를 확인하세요.'},400);}
+   if(action!=='previewRecovery')args.newToken=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');
+   const result=await bridge(env,action,args,request);return json(result,result.ok?200:(result.status||400),result.ok&&args.newToken?{'set-cookie':sessionCookie(args.newToken,url)}:{});
+  }
   if(action==='previewGroupInvite'){if(!/^[a-f0-9]{64}$/.test(input.inviteToken||''))return json({ok:false,error:'올바른 초대 QR을 열어주세요.'},400);const result=await bridge(env,action,{inviteToken:input.inviteToken},request);return json(result,result.ok?200:(result.status||400));}
   if(action==='login'||action==='createClass'||action==='staffLogin'||action==='joinGroupInvite'){
    const code=String(input.code||'').toUpperCase().trim(),nickname=String(input.nickname||'').trim();
@@ -49,7 +58,7 @@ export async function handleRequest(request,env){
    if(nickname.length<1||nickname.length>20||/[\x00-\x1f<>]/.test(nickname))return json({ok:false,error:'표시 이름은 1~20자로 입력해 주세요.'},400);
    if(!/^[a-zA-Z0-9-]{20,64}$/.test(input.deviceId||''))return json({ok:false,error:'기기 정보를 확인할 수 없어요.'},400);
    const token=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');
-   Object.assign(args,{code,nickname,deviceId:input.deviceId,newToken:token});
+   Object.assign(args,{code,nickname,deviceId:input.deviceId,newToken:token,token:getCookie(request)});
    if(action==='joinGroupInvite'){if(!/^[a-f0-9]{64}$/.test(input.inviteToken||''))return json({ok:false,error:'올바른 초대 QR을 열어주세요.'},400);args.inviteToken=input.inviteToken;delete args.code;}
    if(action==='createClass'){
     const enrollmentCode=String(input.enrollmentCode||'').trim().toUpperCase(),className=String(input.className||'').trim();
@@ -61,6 +70,12 @@ export async function handleRequest(request,env){
   }
   const token=getCookie(request);if(!/^[a-f0-9]{64}$/.test(token))return json({ok:false,error:'반 코드를 입력해 주세요.',code:'LOGIN_REQUIRED'},401);
   args.token=token;
+  if(action==='registerRecovery'){if(!/^[a-f0-9]{64}$/.test(input.recoveryToken||''))return json({ok:false,error:'기기 복구 정보를 확인하세요.'},400);args.recoveryToken=input.recoveryToken;}
+  if(action==='createRecovery'){args.deviceId=String(input.deviceId||'');if(!/^[a-zA-Z0-9-]{20,64}$/.test(args.deviceId))return json({ok:false,error:'재입장할 학생을 선택하세요.'},400);args.newRecoveryToken=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');}
+  if(['pushSubscribe','pushTest','pushRetry'].includes(action)&&!pushConfigured(env))return json({ok:false,error:'공지 알림 연결을 준비하고 있어요.'},503);
+  if(action==='pushSubscribe'){try{args.subscription=normalizePushSubscription(input.subscription);}catch{return json({ok:false,error:'알림 등록 정보를 확인할 수 없어요. 다시 허용해 주세요.'},400);}}
+  if(action==='pushRetry'){args.messageId=String(input.messageId||'');if(!/^[a-zA-Z0-9-]{20,64}$/.test(args.messageId))return json({ok:false,error:'다시 보낼 공지를 확인하세요.'},400);}
+  if(action==='send')args.pushEnabled=pushConfigured(env);
   if(action==='createGroupInvite'){args.groupId=String(input.groupId||'');if(!/^[-a-zA-Z0-9]{10,64}$/.test(args.groupId))return json({ok:false,error:'초대할 조를 선택하세요.'},400);args.newInviteToken=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');}
   if(action==='send'){
    const text=String(input.text||'').trim(),kind=input.kind;
@@ -84,6 +99,12 @@ export async function handleRequest(request,env){
   if(action==='groupPlan')args.groupId=url.searchParams.get('groupId')||'';
   if(action==='saveGroupPlan'){args.groupId=String(input.groupId||'');if(!/^[a-zA-Z0-9-]{10,64}$/.test(args.groupId))return json({ok:false,error:'편집할 조를 다시 선택하세요.'},400);args.baseRevision=input.baseRevision;if(!Number.isInteger(args.baseRevision)||args.baseRevision<0)return json({ok:false,error:'조 동선을 먼저 불러와 주세요.'},400);}
   const result=await bridge(env,action,args,request);
+  if(result.ok&&action==='send'&&args.kind==='notice'&&args.pushEnabled&&!result.pushJobId)result.push={queued:false,error:'공지 알림 저장소 업데이트가 필요해요.'};
+  if(result.ok&&result.pushJobId){
+   const jobId=result.pushJobId;delete result.pushJobId;
+   try{if(!env.QUEUE_PUSH)throw new Error('No push queue');await env.QUEUE_PUSH(jobId);result.push={queued:true};}
+   catch{result.push={queued:false,error:'알림 요청을 접수하지 못했어요. 잠시 후 다시 시도하세요.'};}
+  }
   return json(result,result.ok?200:(result.status||400),action==='logout'?{'set-cookie':sessionCookie('',url,true)}:{});
  }catch(error){console.error('Robotland API request failed:',error.name);return json({ok:false,error:'지금 서버에 연결하지 못했어요. 휴대폰의 계획은 그대로 유지됩니다.'},502);}
 }

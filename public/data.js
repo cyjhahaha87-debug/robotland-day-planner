@@ -1026,26 +1026,26 @@ window.MAP_DATA = {
     },
     {
       "id": "lunch-hall",
-      "category": "exhibit",
-      "number": 10,
-      "name": "다목적홀",
+      "category": "food",
+      "number": null,
+      "name": "점심 식당",
       "marker": [
-        1125,
-        860
+        897,
+        743
       ],
       "access": [
-        1125,
-        838
+        984,
+        719
       ],
       "markerNormalized": [
-        488,
-        766
+        389,
+        662
       ],
       "accessNormalized": [
-        488,
-        746
+        427,
+        640
       ],
-      "positionAccuracy": "Approximate manual map reading; access is nearby pavement estimate, not verified entrance.",
+      "positionAccuracy": "Fork-and-spoon restaurant symbol identified on the guide map; nearby pavement access and walking distance are estimates.",
       "kind": "lunch"
     },
     {
@@ -1617,6 +1617,44 @@ window.MAP_DATA = {
       ],
       "positionAccuracy": "Approximate manual map reading; access is nearby pavement estimate, not verified entrance.",
       "kind": "shop"
+    },
+    {
+      "id": "exit-meeting",
+      "name": "로봇 앞 원형 공간",
+      "category": "meeting",
+      "kind": "meeting",
+      "marker": [
+        1382,
+        592
+      ],
+      "access": [
+        1382,
+        596
+      ]
+    },
+    {
+      "id": "exhibit-10",
+      "category": "exhibit",
+      "number": 10,
+      "name": "다목적홀",
+      "marker": [
+        1125,
+        860
+      ],
+      "access": [
+        1125,
+        838
+      ],
+      "markerNormalized": [
+        488,
+        766
+      ],
+      "accessNormalized": [
+        488,
+        746
+      ],
+      "positionAccuracy": "Approximate manual map reading; access is nearby pavement estimate, not verified entrance.",
+      "kind": "exhibit"
     }
   ],
   "sourcePage": "https://www.robot-land.co.kr/info/guide_map_info.php",
@@ -1643,18 +1681,6 @@ window.MAP_DATA = {
       "from": "gate",
       "to": "jumping-bot",
       "meters": 180,
-      "source": "사용자 제공 보행로 거리"
-    },
-    {
-      "from": "gate",
-      "to": "lunch-hall",
-      "meters": 340,
-      "source": "사용자 제공 보행로 거리"
-    },
-    {
-      "from": "sky-tower",
-      "to": "lunch-hall",
-      "meters": 221,
       "source": "사용자 제공 보행로 거리"
     }
   ],
@@ -1691,5 +1717,3 @@ window.MAP_DATA = {
     }
   ]
 };
-
-window.MAP_DATA.attractions.push({id:'exit-meeting',name:'로봇 앞 원형 공간',category:'meeting',kind:'meeting',marker:[1382,592],access:[1382,596]});

@@ -18,7 +18,7 @@
   function timingSource(id){if(byId[id]?.category!=='ride')return '';const v=window.RIDE_TIMES?.[id];return v?'<p class="timing-source"><a href="'+esc(v.url)+'" target="_blank" rel="noopener noreferrer">탑승 영상 '+Math.floor(v.seconds/60)+'분 '+v.seconds%60+'초 ↗</a> · 기본 '+v.minutes+'분</p>':'<p class="timing-source unverified">탑승 영상 미확인 · 이용시간 임시 3분</p>';}
   function toggleStop(id){
     if(id===EXIT){toast('13:00 로봇 앞 원형 공간에서 퇴장 집합합니다');return;}
-    if(id===HALL){$('lunchTime').focus();$('lunchTime').scrollIntoView({block:'center'});toast('다목적홀은 점심 필수 방문지예요');return;}
+    if(id===HALL){$('lunchTime').focus();$('lunchTime').scrollIntoView({block:'center'});toast('점심 식당은 점심 필수 방문지예요');return;}
     const i=state.stops.findIndex(s=>s.id===id);
     if(i>=0){state.stops.splice(i,1);toast(`${nameOf(id)}을 동선에서 제외했어요`);}
     else{const stop={id,stay:0,queue:defaultQueue(id),ride:defaultRide(id)};state.stops.splice(state.stops.length-1,0,stop);toast(`${nameOf(id)}을 추가하고 시간을 맞췄어요`);}
@@ -41,7 +41,7 @@
       const i=state.stops.findIndex(s=>s.id===p.id),pin=$('pin-'+p.id),chip=$('chip-'+p.id);
       pin.classList.toggle('selected',i>=0);chip.classList.toggle('selected',i>=0);pin.hidden=!(state.filters[p.category]||i>=0);chip.hidden=!state.filters[p.category];
       pin.setAttribute('aria-pressed',String(i>=0));chip.setAttribute('aria-pressed',String(i>=0));
-      pin.setAttribute('aria-label',p.id===EXIT?'13시 로봇 앞 퇴장 집합 장소':p.id===HALL?'다목적홀 점심 집합 장소':`${p.name}${i>=0?`, ${i+1}번째 방문지, 눌러서 제외`:', 동선에 추가'}`);
+      pin.setAttribute('aria-label',p.id===EXIT?'13시 로봇 앞 퇴장 집합 장소':p.id===HALL?'점심 식당 점심 집합 장소':`${p.name}${i>=0?`, ${i+1}번째 방문지, 눌러서 제외`:', 동선에 추가'}`);
       pin.firstChild.textContent=p.id===EXIT?'집':p.id===HALL?'식':i>=0?i+1:'+';chip.querySelector('.chip-symbol').textContent=p.id===EXIT?'집':p.id===HALL?'식':i>=0?'✓':'+';
     }
     $('routeList').innerHTML=state.stops.map((s,i)=>{
@@ -60,6 +60,7 @@
     $('measurementList').innerHTML=refs.map((r,i)=>`<li><span>${i+1}. ${esc(nameOf(r.from))} → ${esc(nameOf(r.to))}</span><b>${r.meters}m</b></li>`).join('');
   }
   function setZoom(zoom,center){const v=$('mapViewport'),c=$('mapCanvas'),x=center?.[0]??(v.scrollLeft+v.clientWidth/2)/c.clientWidth,y=center?.[1]??(v.scrollTop+v.clientHeight/2)/c.clientHeight;state.zoom=Math.max(1,Math.min(5,zoom));c.style.width=`${state.zoom*100}%`;v.scrollLeft=Math.max(0,x*c.clientWidth-v.clientWidth/2);v.scrollTop=Math.max(0,y*c.clientHeight-v.clientHeight/2);$('zoomValue').textContent=Math.round(state.zoom*100)+'%';$('zoomOut').disabled=state.zoom<=1;$('zoomIn').disabled=state.zoom>=5;}
+  window.RobotlandMap={focus:(x,y)=>{if(Number.isFinite(x)&&Number.isFinite(y)&&x>=0&&x<=data.width&&y>=0&&y<=data.height)setZoom(3,[x/data.width,y/data.height]);}};
   $('categoryToggles').innerHTML=data.categories.map(c=>`<button type="button" data-category="${c.id}" style="--category-color:${c.color}" aria-pressed="${!!state.filters[c.id]}"><span class="category-dot"></span>${esc(c.name)} <small>${c.count}</small></button>`).join('');
   for(const b of document.querySelectorAll('[data-category]'))b.addEventListener('click',()=>{state.filters[b.dataset.category]=!state.filters[b.dataset.category];render();});
   $('mapPins').innerHTML=data.attractions.map(p=>`<button class="map-pin ${p.kind==='lunch'?'lunch-pin':''}" id="pin-${p.id}" style="left:${p.marker[0]/data.width*100}%;top:${p.marker[1]/data.height*100}%" data-poi="${p.id}" aria-pressed="false"><span>+</span><span class="pin-label">${esc(p.name)}</span></button>`).join('')+`<span class="map-pin gate" style="left:${1630/data.width*100}%;top:${750/data.height*100}%" aria-label="출발 지점 출입구 광장">S</span>`;
@@ -95,11 +96,11 @@
       if(saved.filters)for(const k of Object.keys(state.filters))if(typeof saved.filters[k]==='boolean')state.filters[k]=saved.filters[k];state.returnGate=saved.returnGate===true;
       if(Array.isArray(saved.stops)&&saved.stops.length<=data.attractions.length){const seen=new Set();const stops=[];for(const s of saved.stops){if(!s||!Object.hasOwn(byId,s.id)||seen.has(s.id))continue;seen.add(s.id);stops.push({id:s.id,queue:Number.isInteger(s.queue)&&s.queue>=0&&s.queue<=600?s.queue:defaultQueue(s.id),ride:Number.isInteger(s.ride)&&s.ride>=0&&s.ride<=120?s.ride:defaultRide(s.id),stay:0});}if(!seen.has(HALL))stops.push({id:HALL,stay:0});state.stops=stops;}
       const point=id=>id==='gate'||Object.hasOwn(byId,id);
-      if(Array.isArray(saved.measurements)&&saved.measurements.length<=200){const refs=saved.measurements.filter(r=>r&&point(r.from)&&point(r.to)&&r.from!==r.to&&Number.isFinite(r.meters)&&r.meters>=1&&r.meters<=10000);if(refs.length)state.measurements=refs;}
+      if(Array.isArray(saved.measurements)&&saved.measurements.length<=200){const refs=saved.measurements.filter(r=>r&&(saved.mapRevision==='restaurant-20260928'||(r.from!=='lunch-hall'&&r.to!=='lunch-hall'))&&point(r.from)&&point(r.to)&&r.from!==r.to&&Number.isFinite(r.meters)&&r.meters>=1&&r.meters<=10000);if(refs.length)state.measurements=refs;}
     }catch{}
   }
   function saveState(){
-    try{localStorage.setItem(storageKey(),JSON.stringify({version:1,filters:state.filters,start:state.start,lunchTime:state.lunchTime,mealMinutes:state.mealMinutes,pace:state.pace,autoLunch:true,exitTime:'13:00',returnGate:state.returnGate,stops:state.stops,measurements:state.measurements}));$('saveStatus').textContent='이 기기에 자동 저장';window.dispatchEvent(new CustomEvent('robotland-plan-changed',{detail:{scope:planScope,groupId:activeGroup?.id}}));}catch{$('saveStatus').textContent='저장 불가 · 화면을 유지해 주세요';}
+    try{localStorage.setItem(storageKey(),JSON.stringify({version:1,mapRevision:'restaurant-20260928',filters:state.filters,start:state.start,lunchTime:state.lunchTime,mealMinutes:state.mealMinutes,pace:state.pace,autoLunch:true,exitTime:'13:00',returnGate:state.returnGate,stops:state.stops,measurements:state.measurements}));$('saveStatus').textContent='이 기기에 자동 저장';window.dispatchEvent(new CustomEvent('robotland-plan-changed',{detail:{scope:planScope,groupId:activeGroup?.id}}));}catch{$('saveStatus').textContent='저장 불가 · 화면을 유지해 주세요';}
   }
   function setView(view){document.body.dataset.view=view;for(const b of document.querySelectorAll('[data-mobile-view]'))b.setAttribute('aria-selected',String(b.dataset.mobileView===view));}
   for(const button of document.querySelectorAll('[data-mobile-view]'))button.addEventListener('click',()=>setView(button.dataset.mobileView));

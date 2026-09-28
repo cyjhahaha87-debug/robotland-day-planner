@@ -16,11 +16,11 @@ const outsider=login('A1B2','student-outside-1234567890','x','같은반다른조
 const preview=gs({action:'previewGroupInvite',inviteToken:invite.inviteToken});assert.equal(preview.classId,'class-a');assert.equal(preview.groupId,group.id);
 for(const value of['A1B2','T1E2','deviceId','role','code','조장'])assert.ok(!JSON.stringify(preview).includes(value));
 function join(name='새 친구',extra={}){return gs({action:'joinGroupInvite',inviteToken:invite.inviteToken,nickname:name,deviceId:'new-invited-1234567890123',newToken:token(),clientKey:'qr',...extra});}
-const joined=join('새 친구',{code:'T1E2',role:'teacher',classId:'class-b',groupId:foreign.id});assert.equal(joined.ok,true);assert.equal(joined.user.role,'student');assert.equal(joined.user.classId,'class-a');assert.equal(joined.myGroup.id,group.id);
-assert.equal(join('새 친구').myGroup.count,2,'same device rejoins without another membership');
+const joinedToken=token();const joined=join('새 친구',{newToken:joinedToken,code:'T1E2',role:'teacher',classId:'class-b',groupId:foreign.id});assert.equal(joined.ok,true);assert.equal(joined.user.role,'student');assert.equal(joined.user.classId,'class-a');assert.equal(joined.myGroup.id,group.id);
+assert.equal(join('새 친구',{token:joinedToken}).myGroup.count,2,'same device rejoins without another membership');
 assert.equal(join('새 친구',{deviceId:'duplicate-name-1234567890'}).status,409);
 const otherGroup=act(outsider,'createGroup',{name:'두번째 조'}).myGroup;
-const moved=join('같은반다른조',{deviceId:outsider.user.deviceId});assert.equal(moved.myGroup.id,group.id);
+const moved=join('같은반다른조',{deviceId:outsider.user.deviceId,token:outsider.token});assert.equal(moved.myGroup.id,group.id);
 assert.equal(sheets.GroupMembers.data.slice(1).filter(r=>r[1]===outsider.user.deviceId).length,1);
 const second=create(a);assert.equal(gs({action:'previewGroupInvite',inviteToken:invite.inviteToken}).ok,true,'new QR does not invalidate earlier QR');
 const codeRow=sheets.AccessCodes.data.find(r=>r[0]==='A1B2');codeRow[4]=false;assert.equal(join('중지').status,410);codeRow[4]=true;
