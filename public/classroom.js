@@ -60,5 +60,5 @@
   catch{connected=false;$('classJoin').disabled=true;$('loginFeedback').textContent='서버에 연결할 수 없어요. 저장된 개인 동선은 지도에서 사용할 수 있습니다.';}
  }
  window.RobotlandClassroom={api,applyUser,announceSession,openSettings,deviceId,get user(){return user;},get connected(){return connected;}};
- initialize();
+ window.RobotlandClassroom.ready=initialize();
 })();

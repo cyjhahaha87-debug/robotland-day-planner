@@ -2,6 +2,7 @@
 // 지정된 시트 소유자가 Apps Script에서 setupRobotland()를 한 번 실행하세요.
 var ROBOTLAND_SHEET_ID = '1BPPSKOvkuQarxyLL08L3WL1i5hlqif0ORETJ_Gr2o18';
 var TABLES = {
+ GroupInvites:['inviteHash','classId','groupId','expiresAt','createdAt'],
  StaffMessages:['messageId','sequence','classId','deviceId','nicknameJson','textJson','referenceJson','createdAt'],
  Classes:['classId','className','createdAt'],
  AccessCodes:['code','classId','role','expiresAt','enabled'],
@@ -40,7 +41,7 @@ function digest(s){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_
 function output(result){return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);}
 function fail(message,status){return{ok:false,error:message,status:status||400};}
 function parseCell(v){try{return JSON.parse(v);}catch(e){return String(v||'');}}
-function doGet(){return output({ok:true,service:'Robotland Sheets API',version:'2026-09-28.3',features:['group-locations','unique-member-names','remove-members','delete-notices','staff-room']});}
+function doGet(){return output({ok:true,service:'Robotland Sheets API',version:'2026-09-28.4',features:['group-locations','unique-member-names','remove-members','delete-notices','staff-room','group-invites']});}
 function doPost(e){
  var req;try{if(!e.postData||e.postData.contents.length>50000)return output(fail('요청 크기를 확인해 주세요.',413));req=JSON.parse(e.postData.contents);}catch(err){return output(fail('잘못된 요청이에요.'));}
  var secret=PropertiesService.getScriptProperties().getProperty('BRIDGE_SECRET');if(!secret||req.secret!==secret)return output(fail('연결 권한이 없어요.',403));
@@ -49,6 +50,7 @@ function doPost(e){
 }
 function handle(req){
  var ss=book(),now=Date.now(),sessions=ss.getSheetByName('Sessions');
+ if(req.action==='previewGroupInvite'||req.action==='joinGroupInvite')return groupInviteAction(ss,req,now);
  if(req.action==='staffLogin')return staffLogin(ss,req,now);
  if(req.action==='createClass')return createClassViaApp(ss,req,now);
  if(req.action==='login'){
@@ -72,6 +74,7 @@ function handle(req){
  if(req.action==='logout'){sessions.deleteRow(idx+2);return{ok:true};}
  if(req.action==='staffEnterClass')return staffEnterClass(ss,req,session,now);
  if(req.action==='staff'||req.action==='staffSend')return staffAction(ss,req,session,now);
+ if(req.action==='createGroupInvite')return createGroupInvite(ss,req,session,now);
  if(req.action==='deleteNotice')return deleteNotice(ss,req,session);
  if(req.action==='removeClassMember')return removeClassMember(ss,req,session);
  if(req.action==='setGroupLocation'||req.action==='clearGroupLocation')return groupLocationAction(ss,req,session,now);
@@ -259,4 +262,35 @@ function staffEnterClass(ss,req,s,now){
  var sheet=ss.getSheetByName('Sessions'),list=rows(sheet),next=[s[0],req.classId,'teacher',s[3],s[4],s[5]];
  for(var i=list.length-1;i>=0;i--)if(list[i][0]===s[0]||(list[i][1]===req.classId&&list[i][4]===s[4]))sheet.deleteRow(i+2);
  sheet.appendRow(next);return{ok:true,user:identity(ss,next)};
+}
+
+function createGroupInvite(ss,req,s,now){
+ var group=rows(ss.getSheetByName('Groups')).find(function(g){return g[0]===req.groupId&&g[1]===s[1];});
+ var member=rows(ss.getSheetByName('GroupMembers')).some(function(m){return m[0]===s[1]&&m[1]===s[4]&&m[2]===req.groupId;});
+ if(!group||(!member&&s[2]!=='teacher'))return fail('가입한 조의 초대 QR만 만들 수 있어요.',403);
+ var code=rows(ss.getSheetByName('AccessCodes')).find(function(c){return c[1]===s[1]&&c[2]==='student'&&c[4]===true&&Number(c[3])>now;});
+ if(!code)return fail('반 참여 기간이 끝났거나 학생 입장이 중지됐어요.',410);
+ if(!/^[a-f0-9]{64}$/.test(req.newInviteToken||''))return fail('초대 정보를 확인하세요.');
+ var sheet=ss.getSheetByName('GroupInvites');if(!sheet){sheet=ss.insertSheet('GroupInvites');sheet.appendRow(TABLES.GroupInvites);sheet.setFrozenRows(1);}
+ var list=rows(sheet);if(list.filter(function(r){return r[2]===group[0]&&Number(r[3])>now;}).length>=100)return fail('초대 QR이 많이 만들어졌어요. 이미 만든 QR을 공유해 주세요.',429);
+ var expiresAt=Math.min(now+86400000,Number(code[3]));sheet.appendRow([digest(req.newInviteToken),s[1],group[0],expiresAt,now]);
+ return{ok:true,inviteToken:req.newInviteToken,classId:s[1],className:identity(ss,s).className,groupId:group[0],groupName:parseCell(group[2]),expiresAt:expiresAt};
+}
+function findGroupInvite(ss,token,now){
+ if(!/^[a-f0-9]{64}$/.test(token||''))return null;
+ var sheet=ss.getSheetByName('GroupInvites');if(!sheet)return null;
+ var invite=rows(sheet).find(function(r){return r[0]===digest(token)&&Number(r[3])>now;});if(!invite)return null;
+ var group=rows(ss.getSheetByName('Groups')).find(function(g){return g[0]===invite[2]&&g[1]===invite[1];});
+ var code=rows(ss.getSheetByName('AccessCodes')).find(function(c){return c[1]===invite[1]&&c[2]==='student'&&c[4]===true&&Number(c[3])>now;});
+ var classroom=rows(ss.getSheetByName('Classes')).find(function(c){return c[0]===invite[1];});
+ return group&&code&&classroom?{row:invite,group:group,code:code,classroom:classroom}:null;
+}
+function groupInviteAction(ss,req,now){
+ var found=findGroupInvite(ss,String(req.inviteToken||''),now);if(!found)return fail('초대가 만료됐거나 조가 없어졌어요. 새 QR을 받아주세요.',410);
+ if(req.action==='previewGroupInvite')return{ok:true,classId:found.classroom[0],className:parseCell(found.classroom[1]),groupId:found.group[0],groupName:parseCell(found.group[2]),expiresAt:Number(found.row[3])};
+ // Resolve the student code only on the server; invite links can never issue a teacher session.
+ var result=handle({action:'login',code:found.code[0],nickname:req.nickname,deviceId:req.deviceId,newToken:req.newToken,clientKey:req.clientKey});if(!result.ok)return result;
+ var session=rows(ss.getSheetByName('Sessions')).find(function(s){return s[0]===digest(req.newToken);});
+ var joined=groupAction(ss,{action:'joinGroup',groupId:found.group[0]},session,now);if(!joined.ok)return joined;
+ joined.user=result.user;return joined;
 }

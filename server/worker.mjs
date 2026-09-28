@@ -19,6 +19,7 @@ export async function handleRequest(request,env){
  if(!url.pathname.startsWith('/api/'))return env.ASSETS.fetch(request);
  if(url.pathname==='/api/config'&&request.method==='GET')return json({ok:true,connected:!!(env.SHEETS_API_URL&&env.SHEETS_BRIDGE_SECRET),storage:'google-sheets',pushReady:false});
  const routes={
+  '/api/invites/create':['POST','createGroupInvite'], '/api/invites/preview':['POST','previewGroupInvite'], '/api/invites/join':['POST','joinGroupInvite'],
   '/api/staff/enter':['POST','staffEnterClass'], '/api/staff/login':['POST','staffLogin'], '/api/staff':['GET','staff'], '/api/staff/send':['POST','staffSend'],
   '/api/login':['POST','login'], '/api/session':['GET','session'], '/api/logout':['POST','logout'],
   '/api/messages/delete':['POST','deleteNotice'], '/api/messages':['GET','messages'], '/api/messages/send':['POST','send'],
@@ -41,13 +42,15 @@ export async function handleRequest(request,env){
    if(!input||typeof input!=='object'||Array.isArray(input))return json({ok:false,error:'잘못된 요청이에요.'},400);
   }
   const action=route[1],args={};
-  if(action==='login'||action==='createClass'||action==='staffLogin'){
+  if(action==='previewGroupInvite'){if(!/^[a-f0-9]{64}$/.test(input.inviteToken||''))return json({ok:false,error:'올바른 초대 QR을 열어주세요.'},400);const result=await bridge(env,action,{inviteToken:input.inviteToken},request);return json(result,result.ok?200:(result.status||400));}
+  if(action==='login'||action==='createClass'||action==='staffLogin'||action==='joinGroupInvite'){
    const code=String(input.code||'').toUpperCase().trim(),nickname=String(input.nickname||'').trim();
    if((action==='login'||action==='staffLogin')&&(!/^[A-Z0-9]{4}$/.test(code)||!/[A-Z]/.test(code)||!/[0-9]/.test(code)))return json({ok:false,error:'영문과 숫자가 섞인 4자리 코드를 입력해 주세요.'},400);
    if(nickname.length<1||nickname.length>20||/[\x00-\x1f<>]/.test(nickname))return json({ok:false,error:'표시 이름은 1~20자로 입력해 주세요.'},400);
    if(!/^[a-zA-Z0-9-]{20,64}$/.test(input.deviceId||''))return json({ok:false,error:'기기 정보를 확인할 수 없어요.'},400);
    const token=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');
    Object.assign(args,{code,nickname,deviceId:input.deviceId,newToken:token});
+   if(action==='joinGroupInvite'){if(!/^[a-f0-9]{64}$/.test(input.inviteToken||''))return json({ok:false,error:'올바른 초대 QR을 열어주세요.'},400);args.inviteToken=input.inviteToken;delete args.code;}
    if(action==='createClass'){
     const enrollmentCode=String(input.enrollmentCode||'').trim().toUpperCase(),className=String(input.className||'').trim();
     if((!getCookie(request)&&!/^[A-Z0-9]{4}$/.test(enrollmentCode))||!className||className.length>40||!/^[-a-zA-Z0-9]{20,64}$/.test(input.requestId||''))return json({ok:false,error:'교사용 개설코드와 반 이름을 확인해 주세요.'},400);
@@ -58,6 +61,7 @@ export async function handleRequest(request,env){
   }
   const token=getCookie(request);if(!/^[a-f0-9]{64}$/.test(token))return json({ok:false,error:'반 코드를 입력해 주세요.',code:'LOGIN_REQUIRED'},401);
   args.token=token;
+  if(action==='createGroupInvite'){args.groupId=String(input.groupId||'');if(!/^[-a-zA-Z0-9]{10,64}$/.test(args.groupId))return json({ok:false,error:'초대할 조를 선택하세요.'},400);args.newInviteToken=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');}
   if(action==='send'){
    const text=String(input.text||'').trim(),kind=input.kind;
    if(!['message','report','notice'].includes(kind)||!text||text.length>1000)return json({ok:false,error:'내용은 1~1,000자로 입력해 주세요.'},400);
