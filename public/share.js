@@ -5,6 +5,9 @@
   const dialog = $('shareDialog'), nativeButton = $('shareApp');
   let activeUrl = appUrl, mode = 'app', sharing = false, historyEntry = false, generation = 0, groupKey = '';
   const invites = new Map();
+  let opener = $('openShare');
+  function classKey() { const user = bridge.user; return user?.role === 'teacher' && !user.staffOnly ? user.classId + ':' + user.deviceId : ''; }
+  function syncClass() { $('shareModeClass').hidden = !classKey(); }
   nativeButton.hidden = typeof navigator.share !== 'function';
   function currentGroup() { return bridge.user && !bridge.user.staffOnly ? window.RobotlandGroups?.myGroup : null; }
   function key() { return currentGroup() ? bridge.user.classId + ':' + currentGroup().id + ':' + bridge.user.deviceId : ''; }
@@ -16,6 +19,8 @@
   function markMode(next) {
     mode = next; $('shareModeApp').setAttribute('aria-pressed', String(next === 'app'));
     $('shareModeGroup').setAttribute('aria-pressed', String(next === 'group'));
+    $('shareModeClass').setAttribute('aria-pressed', String(next === 'class'));
+    $('shareTitle').textContent = next === 'class' ? T("우리 반 초대 QR") : T("친구에게 공유");
     $('shareExpiry').hidden = true; $('shareFeedback').textContent = '';
     $('shareDialog').setAttribute('aria-busy', 'false');
   }
@@ -33,6 +38,30 @@
     const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#142c3c';
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (qr.isDark(y, x)) ctx.fillRect((x + border) * scale, (y + border) * scale, scale, scale);
     return canvas.toDataURL('image/png');
+  }
+  async function showClass() {
+    const requestedKey = classKey(); if (!requestedKey) return;
+    const requestGeneration = ++generation; markMode('class'); ready('');
+    $('shareDescription').textContent = T("우리 반 초대 QR을 만들고 있어요…");
+    $('shareDialog').setAttribute('aria-busy', 'true');
+    document.querySelector('label[for="shareAppUrl"]').textContent = T("우리 반 초대 주소");
+    try {
+      const result = await bridge.api('class');
+      if (requestGeneration !== generation || requestedKey !== classKey()) return;
+      const code = result.codes?.student;
+      if (!/^[A-Z0-9]{4}$/.test(code || '') || !/[A-Z]/.test(code) || !/[0-9]/.test(code)) throw new Error(T("사용 가능한 학생 반 코드가 없어요. 반 코드를 확인해 주세요."));
+      // Only the student code is shared. Teacher codes never enter the invitation URL or QR.
+      const url = appUrl + '#class=' + code, image = qrImage(url);
+      $('appShareQr').src = image; $('appShareQr').alt = bridge.user.className + T(" 초대 QR코드");
+      $('saveShareQr').href = image; $('saveShareQr').download = T("로봇랜드-우리반-초대QR.png");
+      $('shareDescription').textContent = T("⟦0⟧ · 학생 반 코드 ⟦1⟧\n학생이 QR을 찍고 자기 이름을 입력하면 우리 반에 입장해요.", [bridge.user.className, code]);
+      $('shareExpiry').textContent = T("학생 반 코드가 유효한 동안 사용할 수 있어요. 우리 반 학생에게 공유해 주세요.");
+      $('shareExpiry').hidden = false; ready(url);
+    } catch (error) {
+      if (requestGeneration !== generation || requestedKey !== classKey()) return;
+      $('shareDescription').textContent = T("우리 반 초대 QR을 만들지 못했어요.");
+      $('shareFeedback').textContent = error.message;
+    } finally { if (requestGeneration === generation) $('shareDialog').setAttribute('aria-busy', 'false'); }
   }
   async function showGroup() {
     const group = currentGroup(), requestedKey = key(); if (!group) return;
@@ -62,16 +91,20 @@
   }
   function syncGroup() {
     const next = key(); $('shareModeGroup').disabled = !next;
-    if (next !== groupKey) { groupKey = next; invites.clear(); showApp(); }
+    if (next !== groupKey) { groupKey = next; invites.clear(); if (mode === 'group') showApp(); }
   }
   window.addEventListener('robotland-groups-changed', syncGroup);
-  window.addEventListener('robotland-session-changed', () => { groupKey = ''; invites.clear(); $('shareModeGroup').disabled = true; showApp(); });
+  window.addEventListener('robotland-session-changed', () => { groupKey = ''; invites.clear(); $('shareModeGroup').disabled = true; syncClass(); showApp(); });
   $('shareModeApp').addEventListener('click', showApp); $('shareModeGroup').addEventListener('click', showGroup);
-  $('openShare').addEventListener('click', () => {
-    if (dialog.open) return; syncGroup(); if (mode === 'group') showGroup();
+  $('shareModeClass').addEventListener('click', showClass);
+  function openShare(trigger, nextMode) {
+    if (dialog.open) return; opener = trigger; syncGroup(); syncClass();
+    if (nextMode === 'class' || mode === 'class') showClass(); else if (mode === 'group') showGroup();
     $('shareFeedback').textContent = ''; dialog.showModal(); $('openShare').setAttribute('aria-expanded', 'true');
-    history.pushState({ ...history.state, robotlandShare: true }, ''); historyEntry = true;
-  });
+    if (!$('classSettingsDialog').open) { history.pushState({ ...history.state, robotlandShare: true }, ''); historyEntry = true; }
+  }
+  $('openShare').addEventListener('click', () => openShare($('openShare')));
+  $('shareClassInvite').addEventListener('click', () => { if (classKey()) openShare($('shareClassInvite'), 'class'); });
   function close() { if (dialog.open) dialog.close(); }
   $('closeShare').addEventListener('click', close);
   dialog.addEventListener('cancel', e => { e.preventDefault(); close(); });
@@ -82,7 +115,7 @@
   dialog.addEventListener('close', () => {
     generation++; $('openShare').setAttribute('aria-expanded', 'false');
     if (historyEntry && history.state?.robotlandShare) { historyEntry = false; history.back(); } else historyEntry = false;
-    if (!activeUrl) showApp(); $('openShare').focus();
+    if (!activeUrl) showApp(); opener.focus();
   });
   window.addEventListener('popstate', () => { historyEntry = false; close(); });
   $('copyAppUrl').addEventListener('click', async () => {
@@ -93,9 +126,9 @@
   nativeButton.addEventListener('click', async () => {
     if (sharing || !activeUrl || typeof navigator.share !== 'function') return;
     sharing = true; nativeButton.disabled = true;
-    try { await navigator.share({ title: mode === 'group' ? T("로봇랜드 우리 조 초대") : T("로봇랜드 동선 플래너"), text: mode === 'group' ? T("이름을 입력하고 우리 반·조에 함께 입장해요.") : T("로봇랜드에서 함께 동선을 계획해요."), url: activeUrl }); }
+    try { await navigator.share({ title: mode === 'class' ? T("로봇랜드 우리 반 초대") : mode === 'group' ? T("로봇랜드 우리 조 초대") : T("로봇랜드 동선 플래너"), text: mode === 'class' ? T("이름을 입력하고 우리 반에 입장해요.") : mode === 'group' ? T("이름을 입력하고 우리 반·조에 함께 입장해요.") : T("로봇랜드에서 함께 동선을 계획해요."), url: activeUrl }); }
     catch (error) { if (error.name !== 'AbortError') $('shareFeedback').textContent = T("공유 메뉴를 열지 못했어요. 주소 복사로 보내주세요."); }
     finally { sharing = false; nativeButton.disabled = !activeUrl; }
   });
-  showApp(); syncGroup();
+  showApp(); syncGroup(); syncClass();
 })();
