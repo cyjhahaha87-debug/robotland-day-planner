@@ -15,6 +15,9 @@
 - 조 위치를 안내도에 직접 표시, 같은 반에서 20초마다 갱신, 10분 지난 위치 표시
 - 같은 반 학생 이름 중복 방지, 교사 인원 삭제, 같은 브라우저 창 사이 로그인 동기화
 - 선생님 참여코드로 여러 기기에서 관리, 닫기 쉬운 반 설정 창
+- 공용 교사 입장코드로 반 개설 없이 교사 모임 입장
+- 교사 모임에서 운영 중인 반·조 현황, 공유 동선·위치 열람, 스냅샷 첨부 대화
+- 인증된 교사는 목록에서 다른 반에 바로 입장·관리, 별도 코드 없이 새 반 생성
 
 ## Netlify 배포
 
@@ -38,7 +41,7 @@ Google Apps Script가 구글시트를 읽고 씁니다. 브라우저는 같은 �
 
 ## 실행과 제한
 
-검증: `node tests/backend.cjs` 및 `node tests/schedule.cjs`.
+검증: `node tests/backend.cjs`, `node tests/schedule.cjs`, `node tests/notices.cjs`, `node tests/staff.cjs`.
 
 Node.js 22 이상에서 `npm run dev`로 로컬 앱을 실행합니다. 기본 주소는 `http://127.0.0.1:4317`입니다. 외부 라이브러리 설치 없이 실행할 수 있습니다.
 

@@ -19,6 +19,7 @@ export async function handleRequest(request,env){
  if(!url.pathname.startsWith('/api/'))return env.ASSETS.fetch(request);
  if(url.pathname==='/api/config'&&request.method==='GET')return json({ok:true,connected:!!(env.SHEETS_API_URL&&env.SHEETS_BRIDGE_SECRET),storage:'google-sheets',pushReady:false});
  const routes={
+  '/api/staff/enter':['POST','staffEnterClass'], '/api/staff/login':['POST','staffLogin'], '/api/staff':['GET','staff'], '/api/staff/send':['POST','staffSend'],
   '/api/login':['POST','login'], '/api/session':['GET','session'], '/api/logout':['POST','logout'],
   '/api/messages/delete':['POST','deleteNotice'], '/api/messages':['GET','messages'], '/api/messages/send':['POST','send'],
   '/api/plan':['GET','loadPlan'], '/api/plan/save':['POST','savePlan'],
@@ -40,17 +41,17 @@ export async function handleRequest(request,env){
    if(!input||typeof input!=='object'||Array.isArray(input))return json({ok:false,error:'잘못된 요청이에요.'},400);
   }
   const action=route[1],args={};
-  if(action==='login'||action==='createClass'){
+  if(action==='login'||action==='createClass'||action==='staffLogin'){
    const code=String(input.code||'').toUpperCase().trim(),nickname=String(input.nickname||'').trim();
-   if(action==='login'&&(!/^[A-Z0-9]{4}$/.test(code)||!/[A-Z]/.test(code)||!/[0-9]/.test(code)))return json({ok:false,error:'영문과 숫자가 섞인 4자리 코드를 입력해 주세요.'},400);
+   if((action==='login'||action==='staffLogin')&&(!/^[A-Z0-9]{4}$/.test(code)||!/[A-Z]/.test(code)||!/[0-9]/.test(code)))return json({ok:false,error:'영문과 숫자가 섞인 4자리 코드를 입력해 주세요.'},400);
    if(nickname.length<1||nickname.length>20||/[\x00-\x1f<>]/.test(nickname))return json({ok:false,error:'표시 이름은 1~20자로 입력해 주세요.'},400);
    if(!/^[a-zA-Z0-9-]{20,64}$/.test(input.deviceId||''))return json({ok:false,error:'기기 정보를 확인할 수 없어요.'},400);
    const token=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');
    Object.assign(args,{code,nickname,deviceId:input.deviceId,newToken:token});
    if(action==='createClass'){
     const enrollmentCode=String(input.enrollmentCode||'').trim().toUpperCase(),className=String(input.className||'').trim();
-    if(!/^[A-Z0-9]{4}$/.test(enrollmentCode)||!className||className.length>40||!/^[-a-zA-Z0-9]{20,64}$/.test(input.requestId||''))return json({ok:false,error:'교사용 개설코드와 반 이름을 확인해 주세요.'},400);
-    Object.assign(args,{enrollmentCode,className,requestId:input.requestId});
+    if((!getCookie(request)&&!/^[A-Z0-9]{4}$/.test(enrollmentCode))||!className||className.length>40||!/^[-a-zA-Z0-9]{20,64}$/.test(input.requestId||''))return json({ok:false,error:'교사용 개설코드와 반 이름을 확인해 주세요.'},400);
+    Object.assign(args,{enrollmentCode,className,requestId:input.requestId,token:getCookie(request)});
    }
    const result=await bridge(env,action,args,request);if(!result.ok)return json(result,result.status||400);
    return json(result,200,{'set-cookie':sessionCookie(token,url)});
@@ -63,6 +64,8 @@ export async function handleRequest(request,env){
    if(!/^[a-zA-Z0-9-]{20,64}$/.test(input.messageId||''))return json({ok:false,error:'메시지 식별자를 확인할 수 없어요.'},400);
    Object.assign(args,{text,kind,messageId:input.messageId});
   }
+  if(action==='staffEnterClass'){args.classId=String(input.classId||'');if(!/^[-a-zA-Z0-9]{2,64}$/.test(args.classId))return json({ok:false,error:'입장할 반을 선택하세요.'},400);}
+  if(action==='staffSend'){args.text=String(input.text||'').trim();args.messageId=String(input.messageId||'');args.referenceClassId=String(input.referenceClassId||'');args.referenceGroupId=String(input.referenceGroupId||'');if(args.text.length>1000||(!args.text&&!args.referenceClassId)||!/^[-a-zA-Z0-9]{20,64}$/.test(args.messageId)||args.referenceClassId.length>64||args.referenceGroupId.length>64)return json({ok:false,error:'공유할 내용을 확인해 주세요.'},400);}
   if(action==='deleteNotice'){args.messageId=String(input.messageId||'');if(!/^[a-zA-Z0-9-]{20,64}$/.test(args.messageId))return json({ok:false,error:'삭제할 공지를 선택하세요.'},400);}
   if(action==='messages')args.after=Math.max(0,Number(url.searchParams.get('after'))||0);
   if(action==='savePlan'||action==='saveGroupPlan'){

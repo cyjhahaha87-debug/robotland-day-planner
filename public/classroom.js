@@ -22,11 +22,11 @@
   if(nearBottom||messages.at(-1)?.deviceId===deviceId)list.scrollTop=list.scrollHeight;
  }
  async function readMessages(){
-  if(!user||!navigator.onLine)return;const currentUser=user;
+  if(!user||user.staffOnly||!navigator.onLine)return;const currentUser=user;
   try{const result=await api('messages?after='+cursor);if(user!==currentUser)return;noticeDeletionSupported=!!result.noticeDeletionSupported;if(Array.isArray(result.noticeIds)){const ids=new Set(result.noticeIds);messages=messages.filter(m=>m.kind!=='notice'||ids.has(m.id));}const existing=new Set(messages.map(m=>m.id));messages.push(...result.messages.filter(m=>!existing.has(m.id)));messages=messages.slice(-200);cursor=result.cursor;renderMessages();$('pinnedNotice').hidden=!result.notice;if(result.notice){$('noticeText').textContent=result.notice.text;$('noticeBy').textContent=result.notice.nickname+' 선생님';}setStatus('연결됨 · 10초마다 새 소식 확인');}
   catch(error){if(user!==currentUser)return;if(error.status===401)await syncSession();else setStatus(error.message);}
  }
- function startPolling(){clearTimeout(poll);const current=sessionEpoch;readMessages().finally(()=>{if(user&&current===sessionEpoch)poll=setTimeout(startPolling,document.hidden?30000:10000);});}
+ function startPolling(){clearTimeout(poll);const current=sessionEpoch;readMessages().finally(()=>{if(user&&!user.staffOnly&&current===sessionEpoch)poll=setTimeout(startPolling,document.hidden?30000:10000);});}
  $('classLoginForm').addEventListener('submit',async e=>{
   e.preventDefault();if(!connected)return;const button=$('classJoin');button.disabled=true;$('loginFeedback').textContent='반 코드를 확인하고 있어요.';
   try{const result=await api('login',{code:$('classCode').value.trim().toUpperCase(),nickname:$('nickname').value.trim(),deviceId});applyUser(result.user);announceSession();$('classCode').value='';$('loginFeedback').textContent='';}

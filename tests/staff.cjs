@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict'),crypto=require('node:crypto');const{gs,login,props,sheets,advanceTime}=require('./store-fixture.cjs');
+const a=login('A1B2','student-staff-1234567890','s','학생A'),b=login('B1C2','student-other-1234567890','b','학생B'),t=login('T1E2','teacher-class-1234567890','t','담임');
+function act(w,action,args={}){return gs({action,token:w.token,...args});}
+assert.equal(act(a,'staff').status,403);assert.equal(act(a,'staffSend',{text:'안됨',messageId:crypto.randomUUID()}).status,403);assert.equal(act(a,'staffEnterClass',{classId:'class-b'}).status,403);
+const g=act(b,'createGroup',{name:'다른 반 탐험조'}).myGroup;
+act(b,'setGroupLocation',{groupId:g.id,x:1000,y:600});
+const plan={version:1,start:'10:00',pace:1,lunchTime:'12:00',mealMinutes:40,exitTime:'13:00',stops:[{id:'sky-tower',queue:10,ride:4},{id:'lunch-hall',stay:40},{id:'exit-meeting',stay:0}]};
+assert.equal(act(b,'saveGroupPlan',{groupId:g.id,baseRevision:0,plan}).ok,true);
+const overview=act(t,'staff');assert.equal(overview.classes.length,2);const cb=overview.classes.find(c=>c.id==='class-b');assert.equal(cb.groups[0].plan.stops[0].id,'sky-tower');assert.equal(cb.groups[0].location.x,1000);
+const serialized=JSON.stringify(overview);for(const secret of['tokenHash','deviceId','student-other','학생B','B1C2','T1E2'])assert.ok(!serialized.includes(secret));
+assert.equal(act(t,'groupPlan',{groupId:g.id}).status,403,'ordinary class APIs remain isolated');
+const messageId=crypto.randomUUID();assert.equal(act(t,'staffSend',{text:'4반 동선을 참고하세요',messageId,referenceClassId:'class-b',referenceGroupId:g.id}).ok,true);
+assert.equal(act(t,'staffSend',{text:'재시도',messageId,referenceClassId:'class-b',referenceGroupId:g.id}).ok,true);assert.equal(sheets.StaffMessages.data.length,2);
+act(b,'setGroupLocation',{groupId:g.id,x:1100,y:650});assert.equal(act(t,'staff').messages[0].reference.group.location.x,1000,'shared snapshot stays at send time');
+const before=sheets.Classes.data.length,token=crypto.randomBytes(32).toString('hex');
+assert.equal(gs({action:'staffLogin',code:'Z9Z9',nickname:'교무',deviceId:'teacher-staff-1234567890',newToken:token,clientKey:'staff'}).ok,false);
+const entered=gs({action:'staffLogin',code:props.TEACHER_SETUP_CODE,nickname:'교무',deviceId:'teacher-staff-1234567890',newToken:token,clientKey:'staff'});assert.equal(entered.user.staffOnly,true);assert.equal(sheets.Classes.data.length,before);
+const teacher={token};assert.equal(act(teacher,'staff').messages.length,1);assert.equal(act(teacher,'messages').status,403);
+const joined=act(teacher,'staffEnterClass',{classId:'class-b'});assert.equal(joined.user.classId,'class-b');assert.equal(joined.user.role,'teacher');assert.equal(joined.user.staffOnly,false);assert.equal(act(teacher,'groupPlan',{groupId:g.id}).ok,true);
+assert.equal(act(teacher,'staffEnterClass',{classId:'class-a'}).ok,true);assert.equal(act(teacher,'groupPlan',{groupId:g.id}).status,403);assert.equal(act(teacher,'staff').classes.length,2);
+const created=gs({action:'createClass',token,enrollmentCode:'',className:'새 담당 반',nickname:'교무',deviceId:'teacher-staff-1234567890',requestId:crypto.randomUUID(),newToken:crypto.randomBytes(32).toString('hex'),clientKey:'staff'});assert.equal(created.ok,true);assert.ok(created.codes.student);assert.equal(sheets.Classes.data.length,before+1);
+const forbidden=gs({action:'createClass',token:a.token,enrollmentCode:'',className:'잘못된 반',nickname:'학생',deviceId:a.user.deviceId,requestId:crypto.randomUUID(),newToken:crypto.randomBytes(32).toString('hex'),clientKey:'bad'});assert.equal(forbidden.ok,false);
+console.log('PASS staff: teacher-only access, no-class teacher login, cross-class summary with no student names or codes, immutable sharing, direct class entry and authenticated class creation.');
