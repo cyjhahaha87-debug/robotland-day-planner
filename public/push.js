@@ -4,7 +4,7 @@
   const apple=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   const installed=()=>!!navigator.standalone||matchMedia('(display-mode: standalone)').matches;
   const capable=()=>('Notification' in window)&&('PushManager' in window)&&('serviceWorker' in navigator);
-  let registered=false,storeReady=false,busy=false,config=null,epoch=0,timer,historyEntry=false,lastNotice='',sync=Promise.resolve();
+  let registered=false,storeReady=false,busy=false,config=null,epoch=0,timer,historyEntry=false,lastNotice='',sync=Promise.resolve();const refreshes=new Map();
   const text=value=>$('pushFeedback').textContent=value;
   function render(){
     const user=bridge.user,needsInstall=apple&&!installed(),allowed=!!user&&!user.staffOnly;
@@ -35,7 +35,7 @@
     }catch(error){if(current===epoch)text(error.status===404?T("선생님이 알림 기능을 연결 중이에요. 연결 후 다시 열어주세요."):error.message||T("인터넷 연결을 확인해 주세요."));}
     finally{if(current===epoch)render();}
   }
-  function scheduleRefresh(rebind=false){sync=sync.catch(()=>{}).then(()=>refresh(rebind));return sync;}
+  function scheduleRefresh(rebind=false){const current=epoch,key=current+':'+rebind;if(refreshes.has(key))return refreshes.get(key);const job=sync.catch(()=>{}).then(()=>{if(current===epoch)return refresh(rebind);});sync=job;refreshes.set(key,job);const clear=()=>{if(refreshes.get(key)===job)refreshes.delete(key);};job.then(clear,clear);return job;}
   async function enable(){
     if(busy)return;busy=true;render();text(T("알림 허용을 확인하고 있어요."));
     const current=epoch;

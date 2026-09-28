@@ -22,6 +22,7 @@ var TABLES = {
  GroupLocations:['classId','groupId','x','y','updatedAt','updatedByJson','deviceId']
 };
 function onOpen(){SpreadsheetApp.getUi().createMenu('로봇랜드').addItem('처음 설정','setupRobotland').addItem('반 만들고 참여코드 발급','createClassroom').addItem('교사용 개설코드 확인','showTeacherCode').addItem('연결 비밀키 확인','showConnectionSecret').addToUi();}
+var REQUEST_ROWS=null;
 function book(){return SpreadsheetApp.openById(ROBOTLAND_SHEET_ID);}
 function setupRobotland(){
  var ss=book();Object.keys(TABLES).forEach(function(name){var sheet=ss.getSheetByName(name);if(!sheet)sheet=ss.insertSheet(name);if(sheet.getLastRow()===0){sheet.appendRow(TABLES[name]);sheet.setFrozenRows(1);sheet.getRange(1,1,1,TABLES[name].length).setFontWeight('bold').setBackground('#173249').setFontColor('#ffffff');}});
@@ -40,18 +41,29 @@ function createClassroom(){
  ui.alert(name+' 참여코드','학생: '+student+'\n선생님: '+teacher+'\n\n30일 동안 유효합니다. 선생님 코드는 학생에게 배부하지 마세요.\n날짜·사용 여부는 AccessCodes 시트에서 변경할 수 있습니다.',ui.ButtonSet.OK);
  }finally{lock.releaseLock();}
 }
-function rows(sheet){return sheet.getLastRow()<2?[]:sheet.getRange(2,1,sheet.getLastRow()-1,sheet.getLastColumn()).getValues();}
+function rows(sheet){
+ if(!sheet)return [];
+ var key=typeof sheet.getName==='function'?sheet.getName():sheet;
+ if(REQUEST_ROWS&&REQUEST_ROWS.has(key))return REQUEST_ROWS.get(key).map(function(r){return r.slice();});
+ var count=sheet.getLastRow(),list=count<2?[]:sheet.getRange(2,1,count-1,sheet.getLastColumn()).getValues();
+ if(REQUEST_ROWS)REQUEST_ROWS.set(key,list);return list.map(function(r){return r.slice();});
+}
 function normalizedMemberName(value){var text=String(value||'');if(text.normalize)text=text.normalize('NFKC');return text.replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/g,' ').trim().toLowerCase();}
 function digest(s){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8).map(function(n){return('0'+((n+256)%256).toString(16)).slice(-2);}).join('');}
 function output(result){return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);}
 function fail(message,status){return{ok:false,error:message,status:status||400};}
 function parseCell(v){try{return JSON.parse(v);}catch(e){return String(v||'');}}
-function doGet(){return output({ok:true,service:'Robotland Sheets API',version:'2026-09-28.5',features:['group-locations','unique-member-names','remove-members','delete-notices','staff-room','group-invites','notice-push','student-recovery']});}
+function doGet(){return output({ok:true,service:'Robotland Sheets API',version:'2026-09-29.1',features:['group-locations','unique-member-names','remove-members','delete-notices','staff-room','group-invites','notice-push','student-recovery','concurrent-reads']});}
 function doPost(e){
  var req;try{if(!e.postData||e.postData.contents.length>50000)return output(fail('요청 크기를 확인해 주세요.',413));req=JSON.parse(e.postData.contents);}catch(err){return output(fail('잘못된 요청이에요.'));}
  var secret=PropertiesService.getScriptProperties().getProperty('BRIDGE_SECRET');if(!secret||req.secret!==secret)return output(fail('연결 권한이 없어요.',403));
- var lock=LockService.getScriptLock();if(!lock.tryLock(10000))return output(fail('요청이 많아요. 잠시 후 다시 시도해 주세요.',503));
- try{return output(handle(req));}catch(err){console.error('Robotland operation failed: '+err.name);return output(fail('저장소에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.',500));}finally{lock.releaseLock();}
+ // Reads do not reserve the global write lock. Authorization still runs on every request.
+ var readOnly=['session','classInfo','messages','loadPlan','groups','groupPlan','staff','pushStatus','previewGroupInvite','previewRecovery'].indexOf(req.action)>=0;
+ var lock=null;REQUEST_ROWS=null;
+ if(!readOnly){lock=LockService.getScriptLock();if(!lock.tryLock(10000))return output({ok:false,status:503,code:'STORE_BUSY',error:'저장소 연결이 지연되고 있어요. 잠시 후 다시 시도해 주세요.'});}
+ else REQUEST_ROWS=new Map(); // Discard after this request; never cache credentials across requests.
+ try{return output(handle(req));}catch(err){console.error('Robotland operation failed: '+err.name);return output(fail('저장소에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.',500));}
+ finally{REQUEST_ROWS=null;if(lock){try{SpreadsheetApp.flush();}finally{lock.releaseLock();}}}
 }
 function handle(req){
  var ss=book(),now=Date.now(),sessions=ss.getSheetByName('Sessions');
@@ -68,7 +80,7 @@ function handle(req){
   if(!match){record[2]=Number(record[2])+1;if(record[2]>=10)record[3]=now+900000;if(aidx<0)attempts.appendRow(record);else attempts.getRange(aidx+2,1,1,4).setValues([record]);return fail('코드가 틀렸거나 사용 기간이 지났어요.',401);}if(aidx>=0)attempts.getRange(aidx+2,1,1,4).setValues([[req.clientKey,now,0,0]]);
   if(!/^[a-f0-9]{64}$/.test(req.newToken||'')||!req.deviceId||!req.nickname)return fail('접속 정보를 확인해 주세요.');
   var existing=rows(sessions),memberSheet=ss.getSheetByName('GroupMembers'),memberList=memberSheet?rows(memberSheet):[],nameKey=normalizedMemberName(req.nickname);
-  var registered=studentRows(ss);var sameDevice=existing.some(function(r){return r[1]===match[1]&&r[4]===req.deviceId;})||registered.some(function(r){return r[0]===match[1]&&r[1]===req.deviceId;});
+  var registered=studentRows(ss,true);var sameDevice=existing.some(function(r){return r[1]===match[1]&&r[4]===req.deviceId;})||registered.some(function(r){return r[0]===match[1]&&r[1]===req.deviceId;});
   var proof=existing.some(function(r){return r[0]===digest(String(req.token||''))&&r[1]===match[1]&&r[4]===req.deviceId&&Number(r[5])>now;});
   if(sameDevice&&match[2]!=='teacher'&&!proof)return fail('기존 학생은 선생님께 재입장 QR을 받아주세요.',409);
   if(!nameKey)return fail('이름을 입력해 주세요.');
@@ -78,12 +90,12 @@ function handle(req){
   clearDevicePush(ss,req.deviceId);revokeRecovery(ss,match[1],req.deviceId);
   var hash=digest(req.newToken),session=[hash,match[1],match[2],JSON.stringify(String(req.nickname).slice(0,20)),req.deviceId,Math.min(now+7*86400000,Number(match[3]))];
   var same=existing.findIndex(function(r){return r[1]===match[1]&&r[4]===req.deviceId;});if(same>=0)sessions.getRange(same+2,1,1,6).setValues([session]);else sessions.appendRow(session);
-  var students=pushSheet(ss,'Students'),studentList=studentRows(ss),studentIndex=studentList.findIndex(function(r){return r[0]===match[1]&&r[1]===req.deviceId;});if(match[2]==='student'&&studentIndex>=0)students.getRange(studentIndex+2,3,1,1).setValues([[session[3]]]);
+  var students=pushSheet(ss,'Students'),studentList=studentRows(ss,true),studentIndex=studentList.findIndex(function(r){return r[0]===match[1]&&r[1]===req.deviceId;});if(match[2]==='student'&&studentIndex>=0)students.getRange(studentIndex+2,3,1,1).setValues([[session[3]]]);
   return{ok:true,user:identity(ss,session)};
  }
  var allSessions=rows(sessions),idx=allSessions.findIndex(function(r){return r[0]===digest(String(req.token||''))&&Number(r[5])>now;});
  if(idx<0)return{ok:false,status:401,error:'반 코드를 다시 입력해 주세요.',code:'LOGIN_REQUIRED'};var session=allSessions[idx];
- if(req.action==='logout'){studentRows(ss);revokeRecovery(ss,session[1],session[4]);clearDevicePush(ss,session[4]);sessions.deleteRow(idx+2);return{ok:true};}
+ if(req.action==='logout'){studentRows(ss,true);revokeRecovery(ss,session[1],session[4]);clearDevicePush(ss,session[4]);sessions.deleteRow(idx+2);return{ok:true};}
  if(['registerRecovery','createRecovery'].indexOf(req.action)>=0)return recoveryAuthAction(ss,req,session,now);
  if(req.action==='staffEnterClass')return staffEnterClass(ss,req,session,now);
  if(req.action==='staff'||req.action==='staffSend')return staffAction(ss,req,session,now);
@@ -93,7 +105,7 @@ function handle(req){
  if(req.action==='setGroupLocation'||req.action==='clearGroupLocation')return groupLocationAction(ss,req,session,now);
  if(session[1]==='__staff__'&&['session','classInfo'].indexOf(req.action)<0)return fail('담당 반에 입장한 뒤 이용하세요.',403);
  if(['pushStatus','pushSubscribe','pushUnsubscribe','pushTest','pushRetry'].indexOf(req.action)>=0)return pushSubscriptionAction(ss,req,session,now);
- var who=identity(ss,session);
+ var who=['session','classInfo'].indexOf(req.action)>=0?identity(ss,session):null;
  if(req.action==='classInfo')return{ok:true,user:who,codes:session[2]==='teacher'?classCodes(ss,session[1]):null};
  if(['groups','createGroup','joinGroup','leaveGroup','groupPlan','saveGroupPlan','assignMember','disbandGroup'].indexOf(req.action)>=0)return groupAction(ss,req,session,now);
  if(req.action==='session')return{ok:true,user:who};
@@ -211,7 +223,7 @@ function removeClassMember(ss,req,s){
  if(s[2]!=='teacher')return fail('선생님만 입장 기록을 정리할 수 있어요.',403);
  if(req.deviceId===s[4])return fail('본인 접속은 반에서 나가기로 종료하세요.');
  var sessions=ss.getSheetByName('Sessions'),members=ss.getSheetByName('GroupMembers');
- var registry=studentRows(ss),slist=rows(sessions),mlist=rows(members),present=registry.some(function(r){return r[0]===s[1]&&r[1]===req.deviceId;})||slist.some(function(r){return r[1]===s[1]&&r[4]===req.deviceId;})||mlist.some(function(r){return r[0]===s[1]&&r[1]===req.deviceId;});
+ var registry=studentRows(ss,true),slist=rows(sessions),mlist=rows(members),present=registry.some(function(r){return r[0]===s[1]&&r[1]===req.deviceId;})||slist.some(function(r){return r[1]===s[1]&&r[4]===req.deviceId;})||mlist.some(function(r){return r[0]===s[1]&&r[1]===req.deviceId;});
  if(!present)return fail('우리 반의 입장 기록만 정리할 수 있어요.',403);
  revokeRecovery(ss,s[1],req.deviceId);clearDevicePush(ss,req.deviceId);var students=ss.getSheetByName('Students');for(var n=registry.length-1;n>=0;n--)if(registry[n][0]===s[1]&&registry[n][1]===req.deviceId)students.deleteRow(n+2);
  for(var i=slist.length-1;i>=0;i--)if(slist[i][1]===s[1]&&slist[i][4]===req.deviceId)sessions.deleteRow(i+2);
@@ -322,7 +334,7 @@ function pushJob(ss,classId,messageId,targetHash,now){
 function attachNoticePush(ss,result,enabled,now){try{if(result.message&&result.message.kind==='notice'&&enabled===true)result.pushJobId=pushJob(ss,result.message.classId,result.message.id,'',now);}catch(error){result.pushSetupError=true;}return result;}
 function pushSubscriptionAction(ss,req,s,now){
  if(s[1]==='__staff__')return fail('공지 알림을 받을 반에 먼저 입장하세요.',403);
- var sheet=pushSheet(ss,'PushSubscriptions'),list=rows(sheet),own=list.find(function(r){return r[1]===s[1]&&r[2]===s[4]&&r[3]===s[0]&&Number(r[6])>now;});
+ var sheet=req.action==='pushStatus'?ss.getSheetByName('PushSubscriptions'):pushSheet(ss,'PushSubscriptions'),list=rows(sheet),own=list.find(function(r){return r[1]===s[1]&&r[2]===s[4]&&r[3]===s[0]&&Number(r[6])>now;});
  if(req.action==='pushStatus'){
   var jobs=ss.getSheetByName('PushJobs'),test=own&&jobs?rows(jobs).filter(function(r){return r[3]===own[0];}).slice(-1)[0]:null;
   return{ok:true,supported:true,registered:!!own,lastTest:test?{state:test[9],createdAt:Number(test[10]),accepted:parseCell(test[6]).length,error:String(test[11]||'')}:null};
@@ -374,10 +386,12 @@ function clearDevicePush(ss,deviceId){var sheet=ss.getSheetByName('PushSubscript
 
 
 // Student identity survives session expiry/logout. Recovery secrets are hashed and never listed.
-function studentRows(ss){
- var sheet=pushSheet(ss,'Students'),list=rows(sheet);
- rows(ss.getSheetByName('Sessions')).filter(function(s){return s[2]==='student';}).forEach(function(s){if(!list.some(function(r){return r[0]===s[1]&&r[1]===s[4];})){var r=[s[1],s[4],s[3],Date.now()];sheet.appendRow(r);list.push(r);}});
- rows(ss.getSheetByName('GroupMembers')).forEach(function(m){if(!list.some(function(r){return r[0]===m[0]&&r[1]===m[1];})&&!rows(ss.getSheetByName('Sessions')).some(function(s){return s[1]===m[0]&&s[4]===m[1]&&s[2]==='teacher';})){var r=[m[0],m[1],m[3],Date.now()];sheet.appendRow(r);list.push(r);}});return list;
+function studentRows(ss,persist){
+ var sheet=persist?pushSheet(ss,'Students'):ss.getSheetByName('Students'),list=rows(sheet),sessions=rows(ss.getSheetByName('Sessions'));
+ var known=new Set(list.map(function(r){return JSON.stringify([r[0],r[1]]);})),teachers=new Set(sessions.filter(function(s){return s[2]==='teacher';}).map(function(s){return JSON.stringify([s[1],s[4]]);}));
+ function add(classId,deviceId,name){var key=JSON.stringify([classId,deviceId]);if(known.has(key))return;known.add(key);var row=[classId,deviceId,name,Date.now()];if(persist)sheet.appendRow(row);list.push(row);}
+ sessions.filter(function(s){return s[2]==='student';}).forEach(function(s){add(s[1],s[4],s[3]);});
+ rows(ss.getSheetByName('GroupMembers')).forEach(function(m){if(!teachers.has(JSON.stringify([m[0],m[1]])))add(m[0],m[1],m[3]);});return list;
 }
 function revokeRecovery(ss,classId,deviceId){['RecoveryKeys','RecoveryInvites'].forEach(function(name){var sheet=ss.getSheetByName(name);if(!sheet)return;var list=rows(sheet);for(var i=list.length-1;i>=0;i--)if(list[i][1]===classId&&list[i][2]===deviceId)sheet.deleteRow(i+2);});}
 function recoveryCode(ss,classId,now){return rows(ss.getSheetByName('AccessCodes')).find(function(r){return r[1]===classId&&r[2]==='student'&&r[4]===true&&Number(r[3])>now;});}
@@ -386,7 +400,7 @@ function recoveryAuthAction(ss,req,s,now){
  var code=recoveryCode(ss,s[1],now);if(!code)return fail('반 참여 기간이 끝났거나 학생 입장이 중지됐어요.',410);
  if(req.action==='registerRecovery'){
   if(s[2]!=='student')return fail('학생 기기에서만 사용할 수 있어요.',403);
-  if(!/^[a-f0-9]{64}$/.test(req.recoveryToken||''))return fail('기기 복구 정보를 확인하세요.');studentRows(ss);
+  if(!/^[a-f0-9]{64}$/.test(req.recoveryToken||''))return fail('기기 복구 정보를 확인하세요.');studentRows(ss,true);
   var sheet=pushSheet(ss,'RecoveryKeys'),list=rows(sheet),hash=digest(req.recoveryToken);
   if(list.some(function(r){return r[0]===hash&&(r[1]!==s[1]||r[2]!==s[4]);}))return fail('새 기기 복구 정보를 만들어 주세요.',409);
   var idx=list.findIndex(function(r){return r[1]===s[1]&&r[2]===s[4];}),row=[hash,s[1],s[4],Math.min(now+30*86400000,Number(code[3]))];if(idx<0)sheet.appendRow(row);else sheet.getRange(idx+2,1,1,4).setValues([row]);return{ok:true,expiresAt:row[3]};

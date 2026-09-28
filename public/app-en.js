@@ -4,6 +4,7 @@
   "language": "en",
   "locale": "en",
   "messages": {
+    "저장소 연결이 지연되고 있어요. 잠시 후 다시 시도해 주세요.": "The data store is taking longer to respond. Please try again shortly.",
     "우리 반 초대 QR": "Class invitation QR",
     "우리 반 초대": "Invite to our class",
     "우리 반 초대 QR을 만들고 있어요…": "Creating the class invitation QR…",
