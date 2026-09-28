@@ -1,0 +1,55 @@
+(() => {
+ 'use strict';const $=id=>document.getElementById(id),bridge=window.RobotlandClassroom,api=bridge.api;
+ let user=null,myGroup=null,groups=[],loadedRevision=0,latestRevision=0,remotePlan=null,applying=false,poll=null,epoch=0,creatingId=crypto.randomUUID();
+ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ function status(text){$('groupStatus').textContent=text;}
+ function draftKey(g=myGroup){return 'robotland-group-draft-'+user.classId+'-'+g.id;}
+ function metaKey(){return draftKey()+'-revision';}
+ function rememberRevision(n){loadedRevision=n;try{localStorage.setItem(metaKey(),String(n));}catch{}}
+ function setRoom(view){$('classChat').hidden=view!=='chat';$('groupPanel').hidden=view!=='groups';for(const b of document.querySelectorAll('[data-room-view]'))b.setAttribute('aria-pressed',String(b.dataset.roomView===view));if(view==='groups'&&user)loadGroups();}
+ for(const b of document.querySelectorAll('[data-room-view]'))b.addEventListener('click',()=>setRoom(b.dataset.roomView));
+ function paintGroups(result){
+  const old=myGroup?.id;groups=result.groups;myGroup=result.myGroup;window.RobotlandGroup=myGroup;paintPeople(result.people);
+  if(old&&old!==myGroup?.id){if(window.RobotlandPlan.getScope().mode==='group')window.RobotlandPlan.setScope('personal');status('조 소속이 변경됐어요. 현재 조를 확인해 주세요.');}
+  $('groupScope').disabled=!myGroup;$('myGroup').hidden=!myGroup;$('groupEnrollment').hidden=false;
+  if(myGroup){$('myGroupName').textContent=myGroup.name;$('myGroupCode').textContent=myGroup.code;$('myGroupMembers').textContent=myGroup.members.join(' · ')+' · '+myGroup.count+'명';}
+  $('groupList').innerHTML=groups.length?groups.map(g=>`<article class="group-item"><div><strong>${esc(g.name)}</strong><p>${g.count}명${g.mine?' · 내가 속한 조':''}</p></div><div class="group-item-actions">${!g.mine?`<button data-join-group="${esc(g.id)}">${myGroup?'이 조로 이동':'입장'}</button>`:''}${user.role==='teacher'?`<button data-preview-group="${esc(g.id)}">동선 보기</button><button data-disband-group="${esc(g.id)}">해산</button>`:''}</div></article>`).join(''):'<p class="no-groups">아직 만들어진 조가 없어요.</p>';
+ }
+ function paintPeople(people){$('teacherMemberPanel').hidden=user?.role!=='teacher';if(user?.role!=='teacher')return;$('teacherMembers').innerHTML=(people||[]).map(p=>`<label class="member-assignment"><span>${esc(p.nickname)}${p.role==='teacher'?' · 선생님':''}</span><select data-assign-device="${esc(p.deviceId)}" aria-label="${esc(p.nickname)} 조 배정"><option value="">조 없음</option>${groups.map(g=>`<option value="${esc(g.id)}" ${p.groupId===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}</select></label>`).join('');}
+ async function loadGroups(){if(!user)return;const current=epoch;try{const result=await api('groups');if(current!==epoch)return;paintGroups(result);}catch(e){status(e.message);}}
+ async function fetchShared(){if(!user||!myGroup)return null;const current=epoch,gid=myGroup.id;const result=await api('group-plan?groupId='+encodeURIComponent(gid));if(current!==epoch||myGroup?.id!==gid)return null;latestRevision=result.revision;remotePlan=result.plan;return result;}
+ function showPlanState(){if(applying||window.RobotlandPlan.getScope().mode!=='group')return;let text=latestRevision>loadedRevision?'다른 조원이 동선을 바꿨어요. 최신 동선을 먼저 확인하세요.':loadedRevision?'수정 후 “조원에게 공유”를 누르면 함께 볼 수 있어요.':'아직 공유되지 않은 조 동선입니다.';$('groupPlanStatus').textContent=text;}
+ async function openGroupPlan(force=false){
+  if(!myGroup)return;try{const result=await fetchShared();if(!result)return;let draft=null;try{draft=JSON.parse(localStorage.getItem(draftKey())||'null');}catch{}
+   if(force&&draft&&!confirm('이 기기의 조 동선 수정본을 최신 공유 동선으로 바꿀까요? 개인 동선은 유지됩니다.'))return;
+   const currentPlan=window.RobotlandPlan.snapshot();applying=true;
+   if(force||!draft){window.RobotlandPlan.setScope('group',myGroup,result.plan||currentPlan);rememberRevision(result.revision);}else{window.RobotlandPlan.setScope('group',myGroup);try{loadedRevision=Number(localStorage.getItem(metaKey()))||0;}catch{loadedRevision=0;}}
+   applying=false;showPlanState();document.querySelector('.mobile-nav [data-mobile-view="plan"]').click();status('지도·동선에서 우리 조 계획을 편집할 수 있어요.');
+  }catch(e){applying=false;status(e.message);$('groupPlanStatus').textContent=e.message;}
+ }
+ $('editGroupPlan').addEventListener('click',()=>openGroupPlan());$('groupScope').addEventListener('click',()=>openGroupPlan());$('reloadGroupPlan').addEventListener('click',()=>openGroupPlan(true));
+ $('publishGroupPlan').addEventListener('click',async()=>{
+  if(!myGroup||window.RobotlandPlan.getScope().mode!=='group')return;const button=$('publishGroupPlan'),gid=myGroup.id,current=epoch;button.disabled=true;
+  try{const plan=window.RobotlandPlan.snapshot(),result=await api('group-plan/save',{groupId:gid,plan,baseRevision:loadedRevision});if(current!==epoch||myGroup?.id!==gid)return;rememberRevision(result.revision);latestRevision=result.revision;remotePlan=plan;$('groupPlanStatus').textContent=`조원에게 공유했어요 · ${result.updatedBy} · ${result.revision}번째 저장`;}
+  catch(e){$('groupPlanStatus').textContent=e.message;}finally{button.disabled=false;}
+ });
+ window.addEventListener('robotland-plan-changed',e=>{if(e.detail.scope==='group')showPlanState();});
+ async function submitGroup(action,body,button){button.disabled=true;const current=epoch;try{const result=await api(action,body);if(current!==epoch)return;paintGroups(result);status(action.endsWith('create')?'조를 만들었어요. 친구들은 조 목록에서 입장할 수 있어요.':'조에 들어왔어요. 우리 조 동선을 열어보세요.');}catch(e){status(e.message);}finally{button.disabled=false;}}
+ $('createGroupForm').addEventListener('submit',e=>{e.preventDefault();submitGroup('groups/create',{name:$('newGroupName').value.trim()},$('createGroupButton'));});
+
+ $('leaveGroup').addEventListener('click',async()=>{try{paintGroups(await api('groups/leave',{}));status('조에서 나왔어요. 다른 조에 가입할 수 있습니다.');}catch(e){status(e.message);}});
+ $('refreshGroups').addEventListener('click',loadGroups);
+ $('groupList').addEventListener('click',async e=>{const join=e.target.closest('[data-join-group]');if(join){submitGroup('groups/join',{groupId:join.dataset.joinGroup},join);return;}
+ const disband=e.target.closest('[data-disband-group]');if(disband){if(!confirm('이 조를 해산하고 조원 모두를 조에서 내보낼까요?'))return;try{paintGroups(await api('groups/disband',{groupId:disband.dataset.disbandGroup}));status('조를 해산했어요.');}catch(error){status(error.message);}return;}
+ const b=e.target.closest('[data-preview-group]');if(!b)return;try{const result=await api('group-plan?groupId='+encodeURIComponent(b.dataset.previewGroup));$('teacherGroupPreview').hidden=false;$('previewGroupName').textContent=result.groupName+' 동선';$('previewGroupMeta').textContent=result.plan?`${result.revision}번째 저장 · ${result.updatedBy}`:'아직 공유된 동선이 없어요.';const name=id=>window.MAP_DATA.attractions.find(p=>p.id===id)?.name||id;$('previewGroupStops').innerHTML=(result.plan?.stops||[]).map(s=>`<li>${esc(name(s.id))}${s.id==='exit-meeting'?' · 13:00 퇴장 집합':s.id==='lunch-hall'?' · 점심':` · 대기 ${Number(s.queue)||0}분`}</li>`).join('');$('teacherGroupPreview').scrollIntoView({block:'nearest'});}catch(e){status(e.message);}});
+ $('closeGroupPreview').addEventListener('click',()=>$('teacherGroupPreview').hidden=true);
+ async function classCodes(){const current=epoch;if(!user||user.role!=='teacher')return;try{const r=await api('class');if(current!==epoch)return;$('studentClassCode').textContent=r.codes?.student||'만료';$('teacherClassCode').textContent=r.codes?.teacher||'만료';$('teacherClassCodes').hidden=false;}catch(e){status(e.message);}}
+ function setConnection(value){$('createClassButton').disabled=!value;}
+ window.addEventListener('robotland-backend-ready',e=>setConnection(e.detail));setConnection(bridge.connected);
+ $('createClassForm').addEventListener('submit',async e=>{e.preventDefault();if(!bridge.connected)return;const b=$('createClassButton');b.disabled=true;$('createClassStatus').textContent='반을 만들고 있어요.';try{const r=await api('classes/create',{enrollmentCode:$('teacherSetupCode').value.toUpperCase().trim(),className:$('newClassName').value.trim(),nickname:$('teacherName').value.trim(),deviceId:bridge.deviceId,requestId:creatingId});creatingId=crypto.randomUUID();$('teacherSetupCode').value='';bridge.applyUser(r.user);$('classSidebar').classList.add('options-open');$('classOptions').setAttribute('aria-expanded','true');$('createClassStatus').textContent='';}catch(e){$('createClassStatus').textContent=e.message;}finally{b.disabled=!bridge.connected;}});
+ for(const id of ['teacherSetupCode'])$(id).addEventListener('input',()=>{$(id).value=$(id).value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);});
+ $('teacherMembers').addEventListener('change',async e=>{const select=e.target.closest('[data-assign-device]');if(!select)return;select.disabled=true;try{paintGroups(await api('groups/assign',{deviceId:select.dataset.assignDevice,groupId:select.value||null}));status('조 배정을 변경했어요.');}catch(error){status(error.message);await loadGroups();}finally{select.disabled=false;}});
+ async function pollPlan(){clearTimeout(poll);try{if(user&&!document.hidden&&navigator.onLine)await loadGroups();if(user&&myGroup&&!document.hidden&&navigator.onLine&&window.RobotlandPlan.getScope().mode==='group'){await fetchShared();showPlanState();}}catch{}finally{if(user)poll=setTimeout(pollPlan,20000);}}
+ function sessionChanged(value){epoch++;user=value;myGroup=null;groups=[];remotePlan=null;loadedRevision=latestRevision=0;window.RobotlandGroup=null;$('groupScope').disabled=true;$('teacherClassCodes').hidden=true;$('teacherGroupPreview').hidden=true;clearTimeout(poll);status('');if(user){loadGroups();classCodes();poll=setTimeout(pollPlan,20000);}}
+ window.addEventListener('robotland-session-changed',e=>sessionChanged(e.detail));if(bridge.user)sessionChanged(bridge.user);
+})();
