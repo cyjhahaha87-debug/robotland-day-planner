@@ -20,7 +20,8 @@
   $('classLogin').hidden=!!user;$('classRoom').hidden=!user;$('classSidebar').hidden=!user;
   if(user){$('className').textContent=user.className;$('memberLabel').textContent=`${user.nickname} · ${user.role==='teacher'?'선생님':'학생'}`;$('messageKind').querySelector('option[value=notice]').disabled=user.role!=='teacher';$('messageKind').value=user.role==='teacher'?'notice':'message';cursor=0;messages=[];renderMessages();startPolling();}
   else{clearTimeout(poll);messages=[];cursor=0;closeSettings();}
-  if(user?.role==='student')registerRecovery();else if(user)clearRecovery();
+  if(user?.role==='student')registerRecovery();else if(user){clearRecovery();$('recoveryStatus').textContent='선생님은 교사 입장코드와 이름으로 다시 들어올 수 있어요.';}
+  try{if(user){localStorage.setItem('robotland-last-role',user.role);if(user.role==='teacher')localStorage.setItem('robotland-teacher-name',user.nickname);}else if(localStorage.getItem('robotland-last-role')==='teacher'){document.querySelector('.teacher-login').open=true;$('staffLoginName').value=localStorage.getItem('robotland-teacher-name')||'';}}catch{}
  }
  function renderMessages(){
   $('chatEmpty').hidden=messages.length>0;
@@ -48,7 +49,7 @@
  settingsDialog.addEventListener('click',e=>{if(e.target!==settingsDialog)return;const r=settingsDialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeSettings();});
  settingsDialog.addEventListener('close',()=>{$('classOptions').setAttribute('aria-expanded','false');if(settingsHistory&&history.state?.robotlandSettings){settingsHistory=false;history.back();}else settingsHistory=false;$('classOptions').focus();});
  window.addEventListener('popstate',()=>{settingsHistory=false;closeSettings();});
- $('classLogout').addEventListener('click',async()=>{if(!confirm('이 기기에서 로그아웃할까요? 조 소속은 유지됩니다. 학생은 선생님의 재입장 QR로 다시 들어올 수 있어요.'))return;try{await api('logout',{});clearRecovery();deviceId=crypto.randomUUID();try{localStorage.setItem('robotland-device-id',deviceId);}catch{}applyUser(null);announceSession();setStatus('');}catch(error){setStatus(error.message);}});
+ $('classLogout').addEventListener('click',async()=>{if(!confirm(user?.role==='teacher'?'로그아웃할까요? 교사 입장코드와 이름으로 다시 들어올 수 있어요.':'이 기기에서 로그아웃할까요? 조 소속은 유지됩니다. 선생님의 재입장 QR로 다시 들어올 수 있어요.'))return;try{await api('logout',{});clearRecovery();if(user?.role!=='teacher'){deviceId=crypto.randomUUID();try{localStorage.setItem('robotland-device-id',deviceId);}catch{}}applyUser(null);announceSession();setStatus('');}catch(error){setStatus(error.message);}});
  async function sendMessage(text,kind){
   if(sending||!text.trim())return;if(!navigator.onLine){setStatus('오프라인에서는 보낼 수 없어요. 작성한 내용은 그대로 두었습니다.');return;}
   sending=true;$('sendMessage').disabled=true;

@@ -265,7 +265,9 @@ function staffAction(ss,req,s,now){
 
 function staffLogin(ss,req,now){
  var expected=PropertiesService.getScriptProperties().getProperty('TEACHER_SETUP_CODE');
- if(!checkAttempt(ss,'teacher:'+req.clientKey,!!expected&&req.code===expected,now))return fail('교사 입장코드를 확인해 주세요. 반복 입력 시 15분 동안 제한됩니다.',403);
+ var classCode=rows(ss.getSheetByName('AccessCodes')).find(function(c){return c[0]===req.code&&c[2]==='teacher'&&c[4]===true&&Number(c[3])>now;});
+ if(!checkAttempt(ss,'teacher:'+req.clientKey,(!!expected&&req.code===expected)||!!classCode,now))return fail('교사 입장코드를 확인해 주세요. 반복 입력 시 15분 동안 제한됩니다.',403);
+ if(classCode)return handle({action:'login',code:req.code,nickname:req.nickname,deviceId:req.deviceId,newToken:req.newToken,clientKey:req.clientKey});
  var nickname=String(req.nickname||'').trim();if(!nickname||nickname.length>20||!normalizedMemberName(nickname)||!/^[a-f0-9]{64}$/.test(req.newToken||'')||!/^[-a-zA-Z0-9]{20,64}$/.test(req.deviceId||''))return fail('이름과 접속 정보를 확인하세요.');
  clearDevicePush(ss,req.deviceId);
  var sessions=ss.getSheetByName('Sessions'),list=rows(sessions),index=list.findIndex(function(r){return r[1]==='__staff__'&&r[4]===req.deviceId;}),row=[digest(req.newToken),'__staff__','teacher',JSON.stringify(nickname),req.deviceId,now+7*86400000];

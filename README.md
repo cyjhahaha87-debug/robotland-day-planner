@@ -56,7 +56,7 @@ Google Apps Script가 구글시트를 읽고 씁니다. 브라우저는 같은 �
 
 ## 실행과 제한
 
-검증: `node tests/backend.cjs`, `node tests/schedule.cjs`, `node tests/notices.cjs`, `node tests/staff.cjs`, `node tests/invites.cjs`, `node tests/push.cjs`, `node tests/push-sw.cjs`, `node tests/recovery.cjs`.
+검증: `node tests/backend.cjs`, `node tests/schedule.cjs`, `node tests/notices.cjs`, `node tests/staff.cjs`, `node tests/invites.cjs`, `node tests/push.cjs`, `node tests/push-sw.cjs`, `node tests/recovery.cjs`, `node tests/teacher-reentry.cjs`.
 
 Node.js 22 이상에서 `npm run dev`로 로컬 앱을 실행합니다. 기본 주소는 `http://127.0.0.1:4317`입니다. 처음에는 `npm ci`로 서버의 웹 푸시 라이브러리를 설치합니다.
 
