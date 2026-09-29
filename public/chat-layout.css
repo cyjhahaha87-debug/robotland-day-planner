@@ -36,7 +36,10 @@
  .pinned-notice {max-height:25%}
  .pinned-notice summary {padding:6px 10px;min-height:36px}
  body[data-chat-keyboard=true] .topbar,body[data-chat-keyboard=true] .class-sidebar,body[data-chat-keyboard=true] .classroom-tabs,body[data-chat-keyboard=true] .mobile-nav {display:none}
- body[data-chat-keyboard=true] .quick-reports {min-height:44px;padding-top:2px;padding-bottom:2px}
+ #staffMessages {min-height:0}
+ #staffMessageForm {grid-template-columns:minmax(0,1fr) auto;align-items:end;padding-top:4px}
+ #staffMessageText {height:44px;min-height:44px;max-height:88px;font-size:16px;line-height:22px;overflow:auto}
+ #sendStaffMessage {min-height:44px;max-width:110px;line-height:1.2}
 }
 @media(max-width:820px) and (orientation:portrait){
  .class-sidebar {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 8px;padding:6px 10px;max-height:none;overflow:hidden}
@@ -66,6 +69,25 @@
  body[data-view=chat] .topbar-actions button {flex:0 1 auto;min-width:44px;padding:6px 8px}
  body[data-view=chat] #installHelp {display:none}
  .class-sidebar #classOptions {position:static;white-space:nowrap;width:auto}
+}
+/* The visual viewport excludes the keyboard. Spend that space on the timeline. */
+@media(max-width:1050px) and (orientation:landscape),(max-width:820px) and (orientation:portrait){
+ body[data-view=chat][data-chat-keyboard=true] main {padding-top:max(4px,calc(var(--safe-top) - var(--chat-viewport-top,0px)));padding-bottom:4px}
+ body[data-chat-keyboard=true] .class-chat {display:flex;flex-direction:column}
+ body[data-chat-keyboard=true] .quick-reports,
+ body[data-chat-keyboard=true] .pinned-notice,
+ body[data-chat-keyboard=true] .staff-heading,
+ body[data-chat-keyboard=true] .staff-tabs,
+ body[data-chat-keyboard=true] .staff-footnote {display:none}
+ body[data-chat-keyboard=true] .staff-panel {padding:4px 8px}
+ body[data-chat-keyboard=true] #staffMessageForm label {position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%)}
+ body[data-chat-keyboard=true] .message-form {padding:4px 8px 0}
+ body[data-chat-keyboard=true] :is(#messageText,#staffMessageText) {max-height:clamp(44px,calc(var(--chat-viewport-height) - 200px),66px);font-size:16px}
+ body[data-chat-keyboard=true] :is(#chatStatus,#staffStatus) {font-size:11px;line-height:16px;max-height:32px;min-height:0;overflow:auto;margin:0;padding:2px 8px;flex-shrink:0}
+ body[data-chat-keyboard=true] :is(#chatStatus,#staffStatus):empty {display:none}
+ body[data-chat-keyboard=true] #staffAttachment {flex-shrink:0;max-height:44px;padding:2px 6px}
+ body[data-chat-keyboard=true] #staffAttachmentLabel {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ body[data-chat-keyboard=true] #pushSendFeedback {max-height:44px;overflow:auto;padding:2px 8px}
 }
 /* Short phones also need enough map area to choose a personal pin. */
 @media(max-width:820px) and (max-height:700px) and (orientation:portrait){

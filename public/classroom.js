@@ -69,7 +69,7 @@
  async function sendMessage(text,kind){
   if(sending||!text.trim())return;if(!navigator.onLine){setStatus(T("오프라인에서는 보낼 수 없어요. 작성한 내용은 그대로 두었습니다."));return;}
   sending=true;$('sendMessage').disabled=true;
-  try{const result=await api('messages/send',{text,kind,messageId:crypto.randomUUID()});if(!messages.some(m=>m.id===result.message.id))messages.push(result.message);renderMessages();if(result.message.kind==='notice')window.dispatchEvent(new CustomEvent('robotland-notice-sent',{detail:result}));$('messageText').value='';setStatus(T("전송했어요."));await readMessages();}
+  try{const result=await api('messages/send',{text,kind,messageId:crypto.randomUUID()});if(!messages.some(m=>m.id===result.message.id))messages.push(result.message);renderMessages();if(result.message.kind==='notice')window.dispatchEvent(new CustomEvent('robotland-notice-sent',{detail:result}));$('messageText').value='';$('messageText').dispatchEvent(new Event('input'));setStatus(T("전송했어요."));await readMessages();}
   catch(error){setStatus(T("보내지 못했어요. ")+error.message);}finally{sending=false;$('sendMessage').disabled=false;}
  }
  $('messageForm').addEventListener('submit',e=>{e.preventDefault();sendMessage($('messageText').value,$('messageKind').value);});

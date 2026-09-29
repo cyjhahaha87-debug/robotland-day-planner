@@ -1,5 +1,6 @@
 import fs from 'node:fs';import path from 'node:path';import http from 'node:http';import assert from 'node:assert/strict';import {once} from 'node:events';import {createRequire} from 'node:module';
 import {handleRequest} from '../server/worker.mjs';
+import {checkKeyboard} from './chat-keyboard-helpers.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const {gs,login,props,sheets}=require('./store-fixture.cjs');
 const teacher=login('T1E2','mobile-teacher-1234567890','teacher','담임');
@@ -11,6 +12,7 @@ const invite=gs({action:'createGroupInvite',token:teacher.token,groupId:group.id
 for(const [who,x]of [[teacher,600],[teacher2,900],[other,1200]])assert.equal(gs({action:'setMemberLocation',token:who.token,x,y:500}).ok,true);
 assert.equal(gs({action:'send',token:teacher.token,kind:'notice',messageId:'mobile-notice-123456789',text:'긴 공지 확인: 점심 집합 장소와 시간을 꼭 확인하세요. '.repeat(16)}).ok,true);
 for(let i=0;i<8;i++)sheets.Messages.appendRow(['mobile-message-'+i,Date.now()+i+1,'class-a',other.user.deviceId,'student',JSON.stringify('다른 학생'),'message',JSON.stringify('채팅 내용 '+i+' · 도착하면 알려주세요.'),Date.now()]);
+for(let i=0;i<8;i++)sheets.StaffMessages.appendRow(['keyboard-staff-message-'+i,Date.now()+i,'class-a',teacher.user.deviceId,JSON.stringify('담임'),JSON.stringify('교사 대화 '+i+' · 도착하면 알려주세요.'),'null',Date.now()]);
 let dropNextEntry=false;
 const originalFetch=globalThis.fetch,requests=[],errors=[],publicDir=path.resolve('public');
 const env={SHEETS_API_URL:'https://script.google.com/macros/s/test/exec',SHEETS_BRIDGE_SECRET:props.BRIDGE_SECRET,CLIENT_IP:'mobile-test',ASSETS:{async fetch(request){
@@ -45,6 +47,12 @@ try{
  if(screenshotDir)await t.page.screenshot({path:path.join(screenshotDir,'teacher-ping.png')});
  await t.ctx.close();
  for(const lang of ['ko','en','zh','ru']){
+  const staff=await pageFor(teacher,lang);
+  await staff.page.locator('.mobile-nav [data-mobile-view="chat"]').click();await staff.page.locator('#staffTab').click();
+  await staff.page.locator('[data-staff-view="talk"]').click();await staff.page.waitForFunction(()=>document.querySelectorAll('#staffMessages .staff-message').length>=8);
+  await checkKeyboard(staff.page,{staff:true,screenshot:screenshotDir?path.join(screenshotDir,lang+'-teacher-keyboard.png'):undefined});
+  assert.deepEqual(await staff.page.evaluate(()=>[...RobotlandI18n.missing]),[],lang+' staff strings translated');
+  await staff.ctx.close();
   const {ctx,page}=await pageFor(student,lang);await page.waitForFunction(()=>!document.getElementById('placeMemberPing').disabled);
   assert.equal(await page.locator('#placeGroupPing').isDisabled(),true);
   assert.equal(await page.locator('[data-member-location]').count(),2,'ungrouped student sees class teachers, not another student');
@@ -69,16 +77,8 @@ try{
   assert.ok(await page.locator('#noticeText').textContent());await page.locator('#pinnedNotice summary').click();
   await page.locator('#openWordChat').click();await page.waitForFunction(()=>!document.getElementById('insertWordChat').disabled);await page.locator('#insertWordChat').click();
   assert.ok(await page.locator('#messageText').inputValue(),'word chat still inserts a draft');
-  if(lang==='ko'){
-   await page.waitForFunction(()=>!history.state?.robotlandWordChat);await page.waitForTimeout(150);
-   await page.locator('#messageText').fill('키보드 확인');await page.locator('#messageText').focus();
-   await page.evaluate(()=>{document.getElementById('messageText').focus();Object.defineProperty(visualViewport,'height',{configurable:true,get:()=>300});visualViewport.dispatchEvent(new Event('resize'));});
-   await page.waitForTimeout(60);
-   assert.equal(await page.evaluate(()=>document.body.dataset.chatKeyboard),'true');
-   const keyboard=await bounds(page);assert.ok(keyboard.form.bottom<=301,'composer stays above keyboard');assert.ok(keyboard.list.height>=95,'keyboard leaves a usable timeline');
-   if(screenshotDir)await page.screenshot({path:path.join(screenshotDir,'keyboard-layout.png')});
-   await page.evaluate(()=>{delete visualViewport.height;document.getElementById('messageText').blur();visualViewport.dispatchEvent(new Event('resize'));});
-  }
+  await page.waitForFunction(()=>!history.state?.robotlandWordChat);await page.waitForTimeout(150);
+  await checkKeyboard(page,{screenshot:screenshotDir?path.join(screenshotDir,lang+'-student-keyboard.png'):undefined});
   assert.deepEqual(await page.evaluate(()=>[...RobotlandI18n.missing]),[],lang+' all UI strings translated');
   // Own pin removal never removes a teacher or another student.
   await page.locator('.mobile-nav [data-mobile-view="map"]').click();const own=gs({action:'groups',token:student.token}).memberLocations.find(p=>p.mine);
