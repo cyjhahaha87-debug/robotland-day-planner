@@ -1,15 +1,16 @@
 (() => {
  'use strict';const T=window.RobotlandI18n.text;const $=id=>document.getElementById(id),bridge=window.RobotlandClassroom,api=bridge.api;
+ let lastGroupsAt=0;
  let user=null,myGroup=null,groups=[],loadedRevision=0,latestRevision=0,remotePlan=null,applying=false,poll=null,pollGeneration=0,epoch=0,creatingId=crypto.randomUUID();
  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function status(text){$('groupStatus').textContent=text;}
  function draftKey(g=myGroup){return 'robotland-group-draft-'+user.classId+'-'+g.id;}
  function metaKey(){return draftKey()+'-revision';}
  function rememberRevision(n){loadedRevision=n;try{localStorage.setItem(metaKey(),String(n));}catch{}}
- function setRoom(view){if(user?.staffOnly)view='staff';if(view==='staff'&&user?.role!=='teacher')view='chat';$('staffPanel').hidden=view!=='staff';window.dispatchEvent(new CustomEvent('robotland-room-view',{detail:view}));$('classChat').hidden=view!=='chat';$('groupPanel').hidden=view!=='groups';for(const b of document.querySelectorAll('[data-room-view]'))b.setAttribute('aria-pressed',String(b.dataset.roomView===view));if(view==='groups'&&user)loadGroups();}
+ function setRoom(view){if(user?.staffOnly)view='staff';if(view==='staff'&&user?.role!=='teacher')view='chat';$('staffPanel').hidden=view!=='staff';window.dispatchEvent(new CustomEvent('robotland-room-view',{detail:view}));$('classChat').hidden=view!=='chat';$('groupPanel').hidden=view!=='groups';for(const b of document.querySelectorAll('[data-room-view]'))b.setAttribute('aria-pressed',String(b.dataset.roomView===view));if(view==='groups'&&user&&Date.now()-lastGroupsAt>2000)loadGroups();}
  for(const b of document.querySelectorAll('[data-room-view]'))b.addEventListener('click',()=>setRoom(b.dataset.roomView));
  function paintGroups(result){
-  const old=myGroup?.id;groups=result.groups;myGroup=result.myGroup;window.RobotlandGroup=myGroup;paintPeople(result.people,result.memberManagementSupported,result.recoverySupported);
+  lastGroupsAt=Date.now();const old=myGroup?.id;groups=result.groups;myGroup=result.myGroup;window.RobotlandGroup=myGroup;paintPeople(result.people,result.memberManagementSupported,result.recoverySupported);
   if(old&&old!==myGroup?.id){if(window.RobotlandPlan.getScope().mode==='group')window.RobotlandPlan.setScope('personal');status(T("조 소속이 변경됐어요. 현재 조를 확인해 주세요."));}
   window.dispatchEvent(new CustomEvent('robotland-groups-changed',{detail:{...result,user}}));
   $('groupScope').disabled=!myGroup;$('myGroup').hidden=!myGroup;$('groupEnrollment').hidden=false;
@@ -53,7 +54,7 @@
  $('teacherMembers').addEventListener('click',async e=>{const button=e.target.closest('[data-remove-member]');if(!button)return;if(!confirm(button.dataset.memberName+T("의 접속과 조 소속을 해제할까요? 해당 학생은 반 코드로 다시 입장할 수 있습니다.")))return;button.disabled=true;try{paintGroups(await api('members/remove',{deviceId:button.dataset.removeMember}));status(T("명단에서 삭제하고 조 소속을 해제했어요. 해당 학생은 반 코드로 다시 입장할 수 있습니다."));}catch(error){status(error.message);}finally{button.disabled=false;}});
  async function pollPlan(){clearTimeout(poll);const generation=++pollGeneration,current=epoch;if(!user||user.staffOnly||document.hidden||!navigator.onLine)return;try{await loadGroups();if(current===epoch&&myGroup&&!document.hidden&&window.RobotlandPlan.getScope().mode==='group'){await fetchShared();showPlanState();}}catch{}finally{if(generation===pollGeneration&&current===epoch&&user&&!user.staffOnly&&!document.hidden&&navigator.onLine)poll=setTimeout(pollPlan,20000+Math.floor(Math.random()*2500));}}
  document.addEventListener('visibilitychange',()=>{if(document.hidden){pollGeneration++;clearTimeout(poll);}else pollPlan();});window.addEventListener('online',pollPlan);
- function sessionChanged(value){epoch++;pollGeneration++;user=value;$('staffTab').hidden=user?.role!=='teacher';for(const b of document.querySelectorAll('[data-room-view]'))if(b.dataset.roomView!=='staff')b.hidden=!!user?.staffOnly;setRoom(user?.staffOnly?'staff':'chat');myGroup=null;groups=[];remotePlan=null;loadedRevision=latestRevision=0;window.RobotlandGroup=null;$('groupScope').disabled=true;$('teacherClassCodes').hidden=true;$('teacherGroupPreview').hidden=true;clearTimeout(poll);status('');if(user&&!user.staffOnly){loadGroups();classCodes();poll=setTimeout(pollPlan,20000);}}
+ function sessionChanged(value){epoch++;pollGeneration++;user=value;$('staffTab').hidden=user?.role!=='teacher';for(const b of document.querySelectorAll('[data-room-view]'))if(b.dataset.roomView!=='staff')b.hidden=!!user?.staffOnly;setRoom(user?.staffOnly?'staff':'chat');myGroup=null;groups=[];remotePlan=null;loadedRevision=latestRevision=0;window.RobotlandGroup=null;$('groupScope').disabled=true;$('teacherClassCodes').hidden=true;$('teacherGroupPreview').hidden=true;clearTimeout(poll);status('');if(user&&!user.staffOnly){if(bridge.initialGroups){const current=epoch,initial=bridge.initialGroups;queueMicrotask(()=>{if(current===epoch)paintGroups(initial);});}else loadGroups();classCodes();poll=setTimeout(pollPlan,20000+Math.floor(Math.random()*2500));}}
  window.RobotlandGroups={resumePlan:()=>openGroupPlan(false,false),refresh:loadGroups,apply:paintGroups,get myGroup(){return myGroup;},get groups(){return groups;}};
  window.addEventListener('robotland-session-changed',e=>sessionChanged(e.detail));if(bridge.user)sessionChanged(bridge.user);
 })();

@@ -23,7 +23,7 @@
   async function refresh(rebind=false){
     const current=epoch;registered=false;storeReady=false;render();
     try{
-      if(!config){const r=await fetch('/api/config',{signal:AbortSignal.timeout(12000)});config=await r.json();}
+      if(!config)config=bridge.config;if(!config){const r=await fetch('/api/config',{signal:AbortSignal.timeout(12000)});config=await r.json();}
       if(!bridge.user||bridge.user.staffOnly||!config.pushReady||current!==epoch)return;
       const state=await bridge.api('push/status');if(current!==epoch)return;storeReady=state.supported===true;registered=state.registered===true;
       if(capable()&&Notification.permission==='granted'&&(!apple||installed())){

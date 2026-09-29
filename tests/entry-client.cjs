@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const context={};vm.runInNewContext(fs.readFileSync(__dirname+'/../public/entry-client.js','utf8'),context);
+const values=new Map(),storage={getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+let time=1000,n=0;const create=()=>context.RobotlandEntry.create({storage,now:()=>time,random:()=>(++n).toString(16).padStart(64,'0')});
+const a=create(),body={code:'A1B2',nickname:'새 학생',deviceId:'new-device'};
+const first=a.prepare('login',body),retry=create().prepare('login',body);
+assert.equal(retry.entryToken,first.entryToken);assert.equal(retry.recoveryToken,first.recoveryToken);
+assert.equal(create().pendingRecovery().token,first.recoveryToken);
+assert.notEqual(a.prepare('login',{...body,nickname:'다른 학생'}).entryToken,first.entryToken);
+const fresh=a.prepare('login',body);
+assert.equal(a.complete(fresh,{user:{role:'student',classId:'a',deviceId:'new-device'},recoveryRegistered:true}),true);
+assert.equal(JSON.parse(values.get('robotland-student-recovery-v1')).token,fresh.recoveryToken);
+assert.equal(create().pendingRecovery(),null);
+const expired=a.prepare('login',body);time+=600001;assert.notEqual(a.prepare('login',body).entryToken,expired.entryToken);
+assert.equal(a.complete(a.prepare('login',body),{user:{role:'student',classId:'a',deviceId:'new-device'}}),false,'older backends retain registration fallback');
+console.log('PASS entry client: persistent exact retries, per-target binding, expiry, recovery storage, lost-cookie recovery and old-backend fallback.');

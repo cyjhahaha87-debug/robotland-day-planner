@@ -32,6 +32,7 @@ export async function handleRequest(request,env){
   '/api/groups':['GET','groups'], '/api/groups/create':['POST','createGroup'], '/api/groups/join':['POST','joinGroup'], '/api/groups/leave':['POST','leaveGroup'],
   '/api/groups/assign':['POST','assignMember'], '/api/groups/disband':['POST','disbandGroup'],
   '/api/group-location':['POST','setGroupLocation'], '/api/group-location/clear':['POST','clearGroupLocation'],
+  '/api/member-location':['POST','setMemberLocation'], '/api/member-location/clear':['POST','clearMemberLocation'],
   '/api/group-plan':['GET','groupPlan'], '/api/group-plan/save':['POST','saveGroupPlan'],
  };
  const route=routes[url.pathname];if(!route)return json({ok:false,error:'요청을 찾을 수 없어요.'},404);
@@ -57,7 +58,14 @@ export async function handleRequest(request,env){
    if((action==='login'||action==='staffLogin')&&(!/^[A-Z0-9]{4}$/.test(code)||!/[A-Z]/.test(code)||!/[0-9]/.test(code)))return json({ok:false,error:'영문과 숫자가 섞인 4자리 코드를 입력해 주세요.'},400);
    if(nickname.length<1||nickname.length>20||/[\x00-\x1f<>]/.test(nickname))return json({ok:false,error:'표시 이름은 1~20자로 입력해 주세요.'},400);
    if(!/^[a-zA-Z0-9-]{20,64}$/.test(input.deviceId||''))return json({ok:false,error:'기기 정보를 확인할 수 없어요.'},400);
-   const token=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');
+   let token=[...crypto.getRandomValues(new Uint8Array(32))].map(n=>n.toString(16).padStart(2,'0')).join('');
+   if((action==='login'||action==='joinGroupInvite')&&input.entryToken!==undefined){
+    const issued=Number(input.entryTime),age=Date.now()-issued;
+    if(!/^[a-f0-9]{64}$/.test(input.entryToken||'')||!Number.isSafeInteger(issued)||age< -60000||age>=600000||!/^[a-f0-9]{64}$/.test(input.recoveryToken||''))return json({ok:false,error:'접속 정보를 확인해 주세요.'},400);
+    // Bind the retry credential to this attempt, its target, and a ten-minute window.
+    token=await fingerprint(JSON.stringify(['entry-v1',action,input.entryToken,issued,code,input.inviteToken||'',nickname,input.deviceId,input.recoveryToken]),env.SHEETS_BRIDGE_SECRET);
+    args.entryExpiresAt=issued+600000;args.recoveryToken=input.recoveryToken;
+   }
    Object.assign(args,{code,nickname,deviceId:input.deviceId,newToken:token,token:getCookie(request)});
    if(action==='joinGroupInvite'){if(!/^[a-f0-9]{64}$/.test(input.inviteToken||''))return json({ok:false,error:'올바른 초대 QR을 열어주세요.'},400);args.inviteToken=input.inviteToken;delete args.code;}
    if(action==='createClass'){
@@ -95,6 +103,7 @@ export async function handleRequest(request,env){
   if(action==='joinGroup'){args.groupId=String(input.groupId||'');if(!/^[a-zA-Z0-9-]{10,64}$/.test(args.groupId))return json({ok:false,error:'조를 목록에서 선택해 주세요.'},400);}
   if(['assignMember','disbandGroup'].includes(action)){args.groupId=input.groupId===null?null:String(input.groupId||'');args.deviceId=String(input.deviceId||'');}
   if(action==='setGroupLocation'||action==='clearGroupLocation'){args.groupId=String(input.groupId||'');if(!/^[a-zA-Z0-9-]{10,64}$/.test(args.groupId))return json({ok:false,error:'현재 조를 확인해 주세요.'},400);if(action==='setGroupLocation'){if(!Number.isInteger(input.x)||!Number.isInteger(input.y)||input.x<0||input.x>2304||input.y<0||input.y>1123)return json({ok:false,error:'안내도 안에서 위치를 선택하세요.'},400);args.x=input.x;args.y=input.y;}}
+  if(action==='setMemberLocation'){if(!Number.isInteger(input.x)||!Number.isInteger(input.y)||input.x<0||input.x>2304||input.y<0||input.y>1123)return json({ok:false,error:'안내도 안에서 위치를 선택하세요.'},400);args.x=input.x;args.y=input.y;}
   if(action==='removeClassMember'){args.deviceId=String(input.deviceId||'');if(!/^[a-zA-Z0-9-]{20,64}$/.test(args.deviceId))return json({ok:false,error:'정리할 입장 기록을 선택하세요.'},400);}
   if(action==='groupPlan')args.groupId=url.searchParams.get('groupId')||'';
   if(action==='saveGroupPlan'){args.groupId=String(input.groupId||'');if(!/^[a-zA-Z0-9-]{10,64}$/.test(args.groupId))return json({ok:false,error:'편집할 조를 다시 선택하세요.'},400);args.baseRevision=input.baseRevision;if(!Number.isInteger(args.baseRevision)||args.baseRevision<0)return json({ok:false,error:'조 동선을 먼저 불러와 주세요.'},400);}

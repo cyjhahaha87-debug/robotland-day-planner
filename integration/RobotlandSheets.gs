@@ -19,10 +19,11 @@ var TABLES = {
  Groups:['groupId','classId','nameJson','joinCode','createdAt','createdByDevice'],
  GroupMembers:['classId','deviceId','groupId','nicknameJson','joinedAt'],
  GroupPlans:['groupId','revision','planJson','updatedAt','updatedByJson'],
- GroupLocations:['classId','groupId','x','y','updatedAt','updatedByJson','deviceId']
+ GroupLocations:['classId','groupId','x','y','updatedAt','updatedByJson','deviceId'],
+ MemberLocations:['classId','deviceId','role','x','y','updatedAt','nicknameJson','pinId']
 };
 function onOpen(){SpreadsheetApp.getUi().createMenu('로봇랜드').addItem('처음 설정','setupRobotland').addItem('반 만들고 참여코드 발급','createClassroom').addItem('교사용 개설코드 확인','showTeacherCode').addItem('연결 비밀키 확인','showConnectionSecret').addToUi();}
-var REQUEST_ROWS=null;
+var REQUEST_ROWS=null,REQUEST_HASHES=null;
 function book(){return SpreadsheetApp.openById(ROBOTLAND_SHEET_ID);}
 function setupRobotland(){
  var ss=book();Object.keys(TABLES).forEach(function(name){var sheet=ss.getSheetByName(name);if(!sheet)sheet=ss.insertSheet(name);if(sheet.getLastRow()===0){sheet.appendRow(TABLES[name]);sheet.setFrozenRows(1);sheet.getRange(1,1,1,TABLES[name].length).setFontWeight('bold').setBackground('#173249').setFontColor('#ffffff');}});
@@ -49,11 +50,11 @@ function rows(sheet){
  if(REQUEST_ROWS)REQUEST_ROWS.set(key,list);return list.map(function(r){return r.slice();});
 }
 function normalizedMemberName(value){var text=String(value||'');if(text.normalize)text=text.normalize('NFKC');return text.replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/\s+/g,' ').trim().toLowerCase();}
-function digest(s){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8).map(function(n){return('0'+((n+256)%256).toString(16)).slice(-2);}).join('');}
+function digest(s){if(REQUEST_HASHES&&REQUEST_HASHES.has(s))return REQUEST_HASHES.get(s);var value=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8).map(function(n){return('0'+((n+256)%256).toString(16)).slice(-2);}).join('');if(REQUEST_HASHES)REQUEST_HASHES.set(s,value);return value;}
 function output(result){return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);}
 function fail(message,status){return{ok:false,error:message,status:status||400};}
 function parseCell(v){try{return JSON.parse(v);}catch(e){return String(v||'');}}
-function doGet(){return output({ok:true,service:'Robotland Sheets API',version:'2026-09-29.1',features:['group-locations','unique-member-names','remove-members','delete-notices','staff-room','group-invites','notice-push','student-recovery','concurrent-reads']});}
+function doGet(){return output({ok:true,service:'Robotland Sheets API',version:'2026-09-29.2',features:['group-locations','member-locations','unique-member-names','remove-members','delete-notices','staff-room','group-invites','notice-push','student-recovery','concurrent-reads','fast-entry','entry-retry']});}
 function doPost(e){
  var req;try{if(!e.postData||e.postData.contents.length>50000)return output(fail('요청 크기를 확인해 주세요.',413));req=JSON.parse(e.postData.contents);}catch(err){return output(fail('잘못된 요청이에요.'));}
  var secret=PropertiesService.getScriptProperties().getProperty('BRIDGE_SECRET');if(!secret||req.secret!==secret)return output(fail('연결 권한이 없어요.',403));
@@ -62,8 +63,9 @@ function doPost(e){
  var lock=null;REQUEST_ROWS=null;
  if(!readOnly){lock=LockService.getScriptLock();if(!lock.tryLock(10000))return output({ok:false,status:503,code:'STORE_BUSY',error:'저장소 연결이 지연되고 있어요. 잠시 후 다시 시도해 주세요.'});}
  else REQUEST_ROWS=new Map(); // Discard after this request; never cache credentials across requests.
+ REQUEST_HASHES=new Map();
  try{return output(handle(req));}catch(err){console.error('Robotland operation failed: '+err.name);return output(fail('저장소에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.',500));}
- finally{REQUEST_ROWS=null;if(lock){try{SpreadsheetApp.flush();}finally{lock.releaseLock();}}}
+ finally{REQUEST_ROWS=null;REQUEST_HASHES=null;if(lock){try{SpreadsheetApp.flush();}finally{lock.releaseLock();}}}
 }
 function handle(req){
  var ss=book(),now=Date.now(),sessions=ss.getSheetByName('Sessions');
@@ -72,27 +74,7 @@ function handle(req){
  if(req.action==='previewGroupInvite'||req.action==='joinGroupInvite')return groupInviteAction(ss,req,now);
  if(req.action==='staffLogin')return staffLogin(ss,req,now);
  if(req.action==='createClass')return createClassViaApp(ss,req,now);
- if(req.action==='login'){
-  var attempts=ss.getSheetByName('Attempts'),attemptRows=rows(attempts),aidx=attemptRows.findIndex(function(r){return r[0]===req.clientKey;}),record=aidx<0?[req.clientKey,now,0,0]:attemptRows[aidx];
-  if(Number(record[3])>now)return fail('입력 시도가 많아요. 15분 후 다시 시도해 주세요.',429);
-  if(now-Number(record[1])>=900000)record=[req.clientKey,now,0,0];
-  var code=String(req.code||'').toUpperCase(),codeRows=rows(ss.getSheetByName('AccessCodes')),match=codeRows.find(function(r){return r[0]===code&&r[4]===true&&Number(r[3])>now;});
-  if(!match){record[2]=Number(record[2])+1;if(record[2]>=10)record[3]=now+900000;if(aidx<0)attempts.appendRow(record);else attempts.getRange(aidx+2,1,1,4).setValues([record]);return fail('코드가 틀렸거나 사용 기간이 지났어요.',401);}if(aidx>=0)attempts.getRange(aidx+2,1,1,4).setValues([[req.clientKey,now,0,0]]);
-  if(!/^[a-f0-9]{64}$/.test(req.newToken||'')||!req.deviceId||!req.nickname)return fail('접속 정보를 확인해 주세요.');
-  var existing=rows(sessions),memberSheet=ss.getSheetByName('GroupMembers'),memberList=memberSheet?rows(memberSheet):[],nameKey=normalizedMemberName(req.nickname);
-  var registered=studentRows(ss,true);var sameDevice=existing.some(function(r){return r[1]===match[1]&&r[4]===req.deviceId;})||registered.some(function(r){return r[0]===match[1]&&r[1]===req.deviceId;});
-  var proof=existing.some(function(r){return r[0]===digest(String(req.token||''))&&r[1]===match[1]&&r[4]===req.deviceId&&Number(r[5])>now;});
-  if(sameDevice&&match[2]!=='teacher'&&!proof)return fail('기존 학생은 선생님께 재입장 QR을 받아주세요.',409);
-  if(!nameKey)return fail('이름을 입력해 주세요.');
-  var duplicate=registered.some(function(r){return r[0]===match[1]&&r[1]!==req.deviceId&&normalizedMemberName(parseCell(r[2]))===nameKey;})||existing.some(function(r){return r[1]===match[1]&&r[4]!==req.deviceId&&Number(r[5])>now&&normalizedMemberName(parseCell(r[3]))===nameKey;})||memberList.some(function(r){return r[0]===match[1]&&r[1]!==req.deviceId&&normalizedMemberName(parseCell(r[3]))===nameKey;});
-  if(duplicate&&match[2]!=='teacher')return fail('같은 반에서 이미 사용 중인 이름이에요. 본인이면 선생님께 재입장 QR을 받아주세요. 동명이인은 선생님께 확인하세요.',409);
-  memberList.forEach(function(r,index){if(r[0]===match[1]&&r[1]===req.deviceId)memberSheet.getRange(index+2,4,1,1).setValues([[JSON.stringify(String(req.nickname).trim().slice(0,20))]]);});
-  clearDevicePush(ss,req.deviceId);revokeRecovery(ss,match[1],req.deviceId);
-  var hash=digest(req.newToken),session=[hash,match[1],match[2],JSON.stringify(String(req.nickname).slice(0,20)),req.deviceId,Math.min(now+7*86400000,Number(match[3]))];
-  var same=existing.findIndex(function(r){return r[1]===match[1]&&r[4]===req.deviceId;});if(same>=0)sessions.getRange(same+2,1,1,6).setValues([session]);else sessions.appendRow(session);
-  var students=pushSheet(ss,'Students'),studentList=studentRows(ss,true),studentIndex=studentList.findIndex(function(r){return r[0]===match[1]&&r[1]===req.deviceId;});if(match[2]==='student'&&studentIndex>=0)students.getRange(studentIndex+2,3,1,1).setValues([[session[3]]]);
-  return{ok:true,user:identity(ss,session)};
- }
+ if(req.action==='login')return loginAction(ss,req,now);
  var allSessions=rows(sessions),idx=allSessions.findIndex(function(r){return r[0]===digest(String(req.token||''))&&Number(r[5])>now;});
  if(idx<0)return{ok:false,status:401,error:'반 코드를 다시 입력해 주세요.',code:'LOGIN_REQUIRED'};var session=allSessions[idx];
  if(req.action==='logout'){studentRows(ss,true);revokeRecovery(ss,session[1],session[4]);clearDevicePush(ss,session[4]);sessions.deleteRow(idx+2);return{ok:true};}
@@ -103,6 +85,7 @@ function handle(req){
  if(req.action==='deleteNotice')return deleteNotice(ss,req,session);
  if(req.action==='removeClassMember')return removeClassMember(ss,req,session);
  if(req.action==='setGroupLocation'||req.action==='clearGroupLocation')return groupLocationAction(ss,req,session,now);
+ if(req.action==='setMemberLocation'||req.action==='clearMemberLocation')return memberLocationAction(ss,req,session,now);
  if(session[1]==='__staff__'&&['session','classInfo'].indexOf(req.action)<0)return fail('담당 반에 입장한 뒤 이용하세요.',403);
  if(['pushStatus','pushSubscribe','pushUnsubscribe','pushTest','pushRetry'].indexOf(req.action)>=0)return pushSubscriptionAction(ss,req,session,now);
  var who=['session','classInfo'].indexOf(req.action)>=0?identity(ss,session):null;
@@ -130,7 +113,49 @@ function handle(req){
  }
  return fail('지원하지 않는 요청이에요.',404);
 }
-function identity(ss,s){var found=rows(ss.getSheetByName('Classes')).find(function(r){return r[0]===s[1];});return{recoverySupported:true,classId:s[1],staffOnly:s[1]==='__staff__',className:found?parseCell(found[1]):s[1]==='__staff__'?'교사 모임':'우리 반',role:s[2],nickname:parseCell(s[3]),deviceId:s[4],expiresAt:Number(s[5])};}
+// Keep rate limits per device, with an additional IP-wide ceiling for code guessing.
+// A verified random group invitation is not a four-character code guess.
+function loginCode(ss,req,now){
+ var sheet=ss.getSheetByName('Attempts'),list=rows(sheet),keys=['login-device:'+req.clientKey+':'+req.deviceId,'login-ip:'+req.clientKey];
+ var records=keys.map(function(key){var index=list.findIndex(function(r){return r[0]===key;}),r=index<0?[key,now,0,0]:list[index];if(now-Number(r[1])>=900000)r=[key,now,0,0];return{index:index,row:r};});
+ if(records.some(function(r){return Number(r.row[3])>now;}))return fail('입력 시도가 많아요. 15분 후 다시 시도해 주세요.',429);
+ var code=String(req.code||'').toUpperCase(),match=rows(ss.getSheetByName('AccessCodes')).find(function(r){return r[0]===code&&r[4]===true&&Number(r[3])>now;});
+ function save(record){if(record.index<0)sheet.appendRow(record.row);else sheet.getRange(record.index+2,1,1,4).setValues([record.row]);}
+ if(!match){records.forEach(function(record,i){record.row[2]=Number(record.row[2])+1;if(record.row[2]>=(i===0?10:100))record.row[3]=now+900000;save(record);});return fail('코드가 틀렸거나 사용 기간이 지났어요.',401);}
+ if(records[0].index>=0&&Number(records[0].row[2])>0){records[0].row=[keys[0],now,0,0];save(records[0]);}
+ return{ok:true,match:match};
+}
+function loginAction(ss,req,now,invite,state){
+ if(!/^[a-f0-9]{64}$/.test(req.newToken||'')||!req.deviceId||!req.nickname)return fail('접속 정보를 확인해 주세요.');
+ var resolved=invite?{ok:true,match:invite.code}:loginCode(ss,req,now);if(!resolved.ok)return resolved;var match=resolved.match;
+ var sessions=ss.getSheetByName('Sessions'),existing=rows(sessions),memberSheet=ss.getSheetByName('GroupMembers'),memberList=rows(memberSheet);
+ var registered=studentRows(ss,true,{sessions:existing,members:memberList}),name=JSON.stringify(String(req.nickname).trim().slice(0,20)),nameKey=normalizedMemberName(req.nickname);
+ if(!nameKey)return fail('이름을 입력해 주세요.');
+ var hash=digest(req.newToken),same=existing.findIndex(function(r){return r[1]===match[1]&&r[4]===req.deviceId;}),studentIndex=registered.findIndex(function(r){return r[0]===match[1]&&r[1]===req.deviceId;});
+ var previous=same>=0?existing[same]:null;
+ // newToken is derived by the bridge from a secret attempt key and a bounded timestamp.
+ // Matching only a device ID or nickname never establishes ownership.
+ var replay=previous&&previous[0]===hash&&previous[2]===match[2]&&previous[3]===name&&Number(previous[5])>now&&Number(req.entryExpiresAt)>now&&Number(req.entryExpiresAt)<=now+660000;
+ var proof=existing.some(function(r){return r[0]===digest(String(req.token||''))&&r[1]===match[1]&&r[4]===req.deviceId&&Number(r[5])>now;});
+ if((same>=0||studentIndex>=0)&&match[2]!=='teacher'&&!proof&&!replay)return fail('기존 학생은 선생님께 재입장 QR을 받아주세요.',409);
+ var duplicate=registered.some(function(r){return r[0]===match[1]&&r[1]!==req.deviceId&&normalizedMemberName(parseCell(r[2]))===nameKey;})||existing.some(function(r){return r[1]===match[1]&&r[4]!==req.deviceId&&Number(r[5])>now&&normalizedMemberName(parseCell(r[3]))===nameKey;})||memberList.some(function(r){return r[0]===match[1]&&r[1]!==req.deviceId&&normalizedMemberName(parseCell(r[3]))===nameKey;});
+ if(duplicate&&match[2]!=='teacher')return fail('같은 반에서 이미 사용 중인 이름이에요. 본인이면 선생님께 재입장 QR을 받아주세요. 동명이인은 선생님께 확인하세요.',409);
+ var recovery=match[2]==='student'&&req.recoveryToken;
+ if(recovery&&!/^[a-f0-9]{64}$/.test(recovery))return fail('기기 복구 정보를 확인하세요.');
+ var keySheet=recovery?pushSheet(ss,'RecoveryKeys'):null,keyRows=recovery?rows(keySheet):[],keyHash=recovery?digest(recovery):null;
+ if(recovery&&keyRows.some(function(r){return r[0]===keyHash&&(r[1]!==match[1]||r[2]!==req.deviceId);}))return fail('새 기기 복구 정보를 만들어 주세요.',409);
+ var session=replay?previous:[hash,match[1],match[2],name,req.deviceId,Math.min(now+7*86400000,Number(match[3]))];
+ if(!replay){
+  memberList.forEach(function(r,index){if(r[0]===match[1]&&r[1]===req.deviceId&&r[3]!==name){memberSheet.getRange(index+2,4,1,1).setValues([[name]]);r[3]=name;}});
+  clearDevicePush(ss,req.deviceId);revokeRecovery(ss,match[1],req.deviceId,recovery?['RecoveryInvites']:undefined);
+  if(same>=0)sessions.getRange(same+2,1,1,6).setValues([session]);else sessions.appendRow(session);
+  if(match[2]==='student'){var students=pushSheet(ss,'Students');if(studentIndex<0)students.appendRow([match[1],req.deviceId,name,now]);else if(registered[studentIndex][2]!==name)students.getRange(studentIndex+2,3,1,1).setValues([[name]]);}
+ }
+ if(recovery){var ki=keyRows.findIndex(function(r){return r[1]===match[1]&&r[2]===req.deviceId;}),keyRow=[keyHash,match[1],req.deviceId,Math.min(now+30*86400000,Number(match[3]))];if(ki<0)keySheet.appendRow(keyRow);else if(!replay||keyRows[ki][0]!==keyHash||Number(keyRows[ki][3])<=now)keySheet.getRange(ki+2,1,1,4).setValues([keyRow]);}
+ if(state){state.session=session;state.members=memberList;}
+ return{ok:true,user:identity(ss,session,invite&&invite.classroom),recoveryRegistered:!!recovery,entryRetrySupported:true};
+}
+function identity(ss,s,classroom){var found=classroom||rows(ss.getSheetByName('Classes')).find(function(r){return r[0]===s[1];});return{recoverySupported:true,classId:s[1],staffOnly:s[1]==='__staff__',className:found?parseCell(found[1]):s[1]==='__staff__'?'교사 모임':'우리 반',role:s[2],nickname:parseCell(s[3]),deviceId:s[4],expiresAt:Number(s[5])};}
 function message(r){return{id:r[0],sequence:Number(r[1]),classId:r[2],deviceId:r[3],role:r[4],nickname:parseCell(r[5]),kind:r[6],text:parseCell(r[7]),createdAt:Number(r[8])};}
 
 function showTeacherCode(){var code=PropertiesService.getScriptProperties().getProperty('TEACHER_SETUP_CODE');if(!code)throw new Error('처음 설정을 실행하세요.');SpreadsheetApp.getUi().alert('교사용 개설코드',code+'\n선생님에게만 전달하세요. 앱에서 반을 만드는 4자리 코드입니다. 학생에게는 생성된 반의 4자리 참여코드를 배부합니다.',SpreadsheetApp.getUi().ButtonSet.OK);}
@@ -194,15 +219,39 @@ function groupAction(ss,req,s,now){
  }
  return fail('지원하지 않는 조 요청이에요.',404);
 }
-function groupState(ss,s){
- var all=rows(ss.getSheetByName('Groups')).filter(function(r){return r[1]===s[1];}),members=rows(ss.getSheetByName('GroupMembers')).filter(function(r){return r[0]===s[1];}),mine=members.find(function(r){return r[1]===s[4];});
+function groupState(ss,s,snapshot){
+ var all=(snapshot?snapshot.groups:rows(ss.getSheetByName('Groups'))).filter(function(r){return r[1]===s[1];}),members=(snapshot?snapshot.members:rows(ss.getSheetByName('GroupMembers'))).filter(function(r){return r[0]===s[1];}),mine=members.find(function(r){return r[1]===s[4];});
  var list=all.map(function(g){var own=!!mine&&mine[2]===g[0],gm=members.filter(function(m){return m[2]===g[0];});return{id:g[0],name:parseCell(g[2]),count:gm.length,code:own||s[2]==='teacher'?g[3]:null,mine:own,members:own||s[2]==='teacher'?gm.map(function(m){return parseCell(m[3]);}):[]};});
  var people=[];if(s[2]==='teacher'){var seen={};rows(ss.getSheetByName('Sessions')).filter(function(m){return m[1]===s[1]&&Number(m[5])>Date.now();}).forEach(function(m){if(seen[m[4]])return;seen[m[4]]=true;var member=members.find(function(x){return x[1]===m[4];});people.push({deviceId:m[4],nickname:parseCell(m[3]),role:m[2],groupId:member?member[2]:null});});}
  if(s[2]==='teacher')studentRows(ss).filter(function(r){return r[0]===s[1];}).forEach(function(r){if(!people.some(function(p){return p.deviceId===r[1];})){var m=members.find(function(x){return x[1]===r[1];});people.push({deviceId:r[1],nickname:parseCell(r[2]),role:'student',groupId:m?m[2]:null,inactive:true});}});
  if(s[2]==='teacher')members.forEach(function(m){if(!people.some(function(p){return p.deviceId===m[1];}))people.push({deviceId:m[1],nickname:parseCell(m[3]),role:'student',groupId:m[2],inactive:true});});
  var locationSheet=ss.getSheetByName('GroupLocations'),locations=locationSheet?rows(locationSheet).filter(function(r){return r[0]===s[1];}):[];
  list.forEach(function(g){var pin=locations.find(function(r){return r[1]===g.id;});g.location=pin&&g.count>0&&Date.now()-Number(pin[4])<86400000?{x:Number(pin[2]),y:Number(pin[3]),updatedAt:Number(pin[4]),updatedBy:parseCell(pin[5])}:null;});
- return{ok:true,groups:list,myGroup:list.find(function(g){return g.mine;})||null,people:people,locationsSupported:true,memberManagementSupported:true,recoverySupported:true};
+ return{ok:true,groups:list,myGroup:list.find(function(g){return g.mine;})||null,people:people,locationsSupported:true,memberLocationsSupported:true,memberLocations:visibleMemberLocations(ss,s,all,members),memberManagementSupported:true,recoverySupported:true};
+}
+
+// Personal pins are filtered here, before they ever reach another device.
+// Membership is resolved at read time: ungrouped students are not a shared group.
+function visibleMemberLocations(ss,s,groups,members){
+ if(s[1]==='__staff__')return [];
+ var now=Date.now(),sheet=ss.getSheetByName('MemberLocations');if(!sheet)return [];
+ var active=new Map(),groupByDevice=new Map(),validGroups=new Set(groups.map(function(g){return g[0];}));
+ rows(ss.getSheetByName('Sessions')).forEach(function(r){if(r[1]===s[1]&&Number(r[5])>now)active.set(r[4],r[2]);});
+ members.forEach(function(m){if(m[0]===s[1]&&validGroups.has(m[2]))groupByDevice.set(m[1],m[2]);});
+ var myGroup=groupByDevice.get(s[4]);
+ return rows(sheet).filter(function(r){
+  if(r[0]!==s[1]||active.get(r[1])!==r[2]||['teacher','student'].indexOf(r[2])<0||now-Number(r[5])>=86400000)return false;
+  return r[1]===s[4]||s[2]==='teacher'||r[2]==='teacher'||(!!myGroup&&myGroup===groupByDevice.get(r[1]));
+ }).map(function(r){return{id:r[7],name:parseCell(r[6]),role:r[2],mine:r[1]===s[4],location:{x:Number(r[3]),y:Number(r[4]),updatedAt:Number(r[5]),updatedBy:parseCell(r[6])}};});
+}
+function memberLocationAction(ss,req,s,now){
+ if(s[1]==='__staff__'||['teacher','student'].indexOf(s[2])<0)return fail('담당 반에 입장한 뒤 이용하세요.',403);
+ if(req.action==='setMemberLocation'&&(!Number.isInteger(req.x)||!Number.isInteger(req.y)||req.x<0||req.y<0||req.x>2304||req.y>1123))return fail('안내도 안에서 위치를 선택하세요.');
+ var sheet=req.action==='setMemberLocation'?pushSheet(ss,'MemberLocations'):ss.getSheetByName('MemberLocations');
+ var list=rows(sheet),index=list.findIndex(function(r){return r[0]===s[1]&&r[1]===s[4];});
+ if(req.action==='clearMemberLocation'){if(index>=0)sheet.deleteRow(index+2);}
+ else{var row=[s[1],s[4],s[2],req.x,req.y,now,s[3],index>=0?list[index][7]:Utilities.getUuid()];if(index>=0)sheet.getRange(index+2,1,1,8).setValues([row]);else sheet.appendRow(row);}
+ return groupState(ss,s);
 }
 
 function groupLocationAction(ss,req,s,now){
@@ -228,6 +277,7 @@ function removeClassMember(ss,req,s){
  revokeRecovery(ss,s[1],req.deviceId);clearDevicePush(ss,req.deviceId);var students=ss.getSheetByName('Students');for(var n=registry.length-1;n>=0;n--)if(registry[n][0]===s[1]&&registry[n][1]===req.deviceId)students.deleteRow(n+2);
  for(var i=slist.length-1;i>=0;i--)if(slist[i][1]===s[1]&&slist[i][4]===req.deviceId)sessions.deleteRow(i+2);
  for(var j=mlist.length-1;j>=0;j--)if(mlist[j][0]===s[1]&&mlist[j][1]===req.deviceId)members.deleteRow(j+2);
+ var pins=ss.getSheetByName('MemberLocations'),pinRows=rows(pins);for(var p=pinRows.length-1;p>=0;p--)if(pinRows[p][0]===s[1]&&pinRows[p][1]===req.deviceId)pins.deleteRow(p+2);
  return groupState(ss,s);
 }
 
@@ -311,19 +361,22 @@ function findGroupInvite(ss,token,now){
  if(!/^[a-f0-9]{64}$/.test(token||''))return null;
  var sheet=ss.getSheetByName('GroupInvites');if(!sheet)return null;
  var invite=rows(sheet).find(function(r){return r[0]===digest(token)&&Number(r[3])>now;});if(!invite)return null;
- var group=rows(ss.getSheetByName('Groups')).find(function(g){return g[0]===invite[2]&&g[1]===invite[1];});
+ var groupRows=rows(ss.getSheetByName('Groups')),group=groupRows.find(function(g){return g[0]===invite[2]&&g[1]===invite[1];});
  var code=rows(ss.getSheetByName('AccessCodes')).find(function(c){return c[1]===invite[1]&&c[2]==='student'&&c[4]===true&&Number(c[3])>now;});
  var classroom=rows(ss.getSheetByName('Classes')).find(function(c){return c[0]===invite[1];});
- return group&&code&&classroom?{row:invite,group:group,code:code,classroom:classroom}:null;
+ return group&&code&&classroom?{row:invite,group:group,groupRows:groupRows,code:code,classroom:classroom}:null;
 }
 function groupInviteAction(ss,req,now){
  var found=findGroupInvite(ss,String(req.inviteToken||''),now);if(!found)return fail('초대가 만료됐거나 조가 없어졌어요. 새 QR을 받아주세요.',410);
  if(req.action==='previewGroupInvite')return{ok:true,classId:found.classroom[0],className:parseCell(found.classroom[1]),groupId:found.group[0],groupName:parseCell(found.group[2]),expiresAt:Number(found.row[3])};
  // Resolve the student code only on the server; invite links can never issue a teacher session.
- var result=handle({action:'login',code:found.code[0],nickname:req.nickname,deviceId:req.deviceId,newToken:req.newToken,clientKey:req.clientKey,token:req.token});if(!result.ok)return result;
- var session=rows(ss.getSheetByName('Sessions')).find(function(s){return s[0]===digest(req.newToken);});
- var joined=groupAction(ss,{action:'joinGroup',groupId:found.group[0]},session,now);if(!joined.ok)return joined;
- joined.user=result.user;return joined;
+ var state={},result=loginAction(ss,req,now,found,state);if(!result.ok)return result;
+ var index=state.members.findIndex(function(m){return m[0]===state.session[1]&&m[1]===state.session[4];});
+ if(index<0||state.members[index][2]!==found.group[0]){
+  var member=[state.session[1],state.session[4],found.group[0],state.session[3],now],sheet=ss.getSheetByName('GroupMembers');
+  if(index<0){sheet.appendRow(member);state.members.push(member);}else{sheet.getRange(index+2,1,1,5).setValues([member]);state.members[index]=member;}
+ }
+ var joined=groupState(ss,state.session,{groups:found.groupRows,members:state.members});joined.user=result.user;joined.recoveryRegistered=result.recoveryRegistered;joined.entryRetrySupported=true;return joined;
 }
 
 function pushSheet(ss,name){var sheet=ss.getSheetByName(name);if(!sheet){sheet=ss.insertSheet(name);sheet.appendRow(TABLES[name]);sheet.setFrozenRows(1);}return sheet;}
@@ -386,14 +439,14 @@ function clearDevicePush(ss,deviceId){var sheet=ss.getSheetByName('PushSubscript
 
 
 // Student identity survives session expiry/logout. Recovery secrets are hashed and never listed.
-function studentRows(ss,persist){
- var sheet=persist?pushSheet(ss,'Students'):ss.getSheetByName('Students'),list=rows(sheet),sessions=rows(ss.getSheetByName('Sessions'));
+function studentRows(ss,persist,snapshot){
+ var pending=[],sheet=persist?pushSheet(ss,'Students'):ss.getSheetByName('Students'),list=rows(sheet),sessions=snapshot?snapshot.sessions:rows(ss.getSheetByName('Sessions'));
  var known=new Set(list.map(function(r){return JSON.stringify([r[0],r[1]]);})),teachers=new Set(sessions.filter(function(s){return s[2]==='teacher';}).map(function(s){return JSON.stringify([s[1],s[4]]);}));
- function add(classId,deviceId,name){var key=JSON.stringify([classId,deviceId]);if(known.has(key))return;known.add(key);var row=[classId,deviceId,name,Date.now()];if(persist)sheet.appendRow(row);list.push(row);}
+ function add(classId,deviceId,name){var key=JSON.stringify([classId,deviceId]);if(known.has(key))return;known.add(key);var row=[classId,deviceId,name,Date.now()];if(persist)pending.push(row);list.push(row);}
  sessions.filter(function(s){return s[2]==='student';}).forEach(function(s){add(s[1],s[4],s[3]);});
- rows(ss.getSheetByName('GroupMembers')).forEach(function(m){if(!teachers.has(JSON.stringify([m[0],m[1]])))add(m[0],m[1],m[3]);});return list;
+ (snapshot?snapshot.members:rows(ss.getSheetByName('GroupMembers'))).forEach(function(m){if(!teachers.has(JSON.stringify([m[0],m[1]])))add(m[0],m[1],m[3]);});if(pending.length)sheet.getRange(sheet.getLastRow()+1,1,pending.length,4).setValues(pending);return list;
 }
-function revokeRecovery(ss,classId,deviceId){['RecoveryKeys','RecoveryInvites'].forEach(function(name){var sheet=ss.getSheetByName(name);if(!sheet)return;var list=rows(sheet);for(var i=list.length-1;i>=0;i--)if(list[i][1]===classId&&list[i][2]===deviceId)sheet.deleteRow(i+2);});}
+function revokeRecovery(ss,classId,deviceId,tables){(tables||['RecoveryKeys','RecoveryInvites']).forEach(function(name){var sheet=ss.getSheetByName(name);if(!sheet)return;var list=rows(sheet);for(var i=list.length-1;i>=0;i--)if(list[i][1]===classId&&list[i][2]===deviceId)sheet.deleteRow(i+2);});}
 function recoveryCode(ss,classId,now){return rows(ss.getSheetByName('AccessCodes')).find(function(r){return r[1]===classId&&r[2]==='student'&&r[4]===true&&Number(r[3])>now;});}
 function recoveryTarget(ss,classId,deviceId){return studentRows(ss).find(function(r){return r[0]===classId&&r[1]===deviceId;});}
 function recoveryAuthAction(ss,req,s,now){
